@@ -71,7 +71,7 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
             <NavItem
               icon={Bike}
               label="Riders"
-              active={location.pathname.includes("/riders") ? true : false}
+              active={location.pathname.startsWith("/rider") ? true : false}
             />
           </Link>
           <NavItem
@@ -104,7 +104,7 @@ const Layout = ({ children }) => {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b lg:hidden px-4 py-3 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-800">Deligo</h2>
+          <h2 className="text-xl font-semibold text-gray-800">FOODVERSE-FLEET</h2>
           <button
             onClick={() => setIsSidebarOpen(true)}
             className="p-2 rounded-md hover:bg-gray-100"

@@ -10,6 +10,8 @@ import AuthProvider from "./context/authContext.jsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Restaurant from "./screens/Restaurant.jsx";
 import Riders from "./screens/Riders.jsx";
+import RegisterRider from "./screens/RegisterRider.jsx";
+import RiderPayment from "./screens/RiderPayment.jsx";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +55,10 @@ createRoot(document.getElementById("root")).render(
             }
           />
 
+
+
+          {/* =====================riders ======================== */}
+
           <Route
             path="/riders"
             element={
@@ -61,7 +67,23 @@ createRoot(document.getElementById("root")).render(
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/rider-register"
+            element={
+              <ProtectedRoute>
+                <RegisterRider />
+              </ProtectedRoute>
+            }
+          /> <Route
+            path="/rider-payment/:riderId"
+            element={
+              <ProtectedRoute>
+                <RiderPayment />
+              </ProtectedRoute>
+            }
+          />
 
+          {/* ==============auth================ */}
           {/* auth screen */}
           <Route path="/login" element={<Login />} />
         </Routes>

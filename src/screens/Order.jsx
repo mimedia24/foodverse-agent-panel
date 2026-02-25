@@ -33,6 +33,7 @@ import { useAuth } from "../context/authContext";
 import AssignRider from "../components/orders/AssignRider";
 import ItemsCard from "../components/orders/ItemsCard";
 import DeleteOrder from "../components/orders/DeleteOrder";
+import UpdateOrderStatus from "../components/orders/UpdateOrderStatus";
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -325,6 +326,17 @@ function Order() {
         </div>
       ),
     },
+    
+    {
+      title: "Platform",
+      key: "platform",
+      width: 100,
+      render: (_, record) => (
+        <div className="flex items-center gap-2 bg-lime-100 px-2 py-1 rounded-lg justify-center">
+          {record.platform}
+        </div>
+      ),
+    },
     {
       title: "LOGISTICS",
       key: "logistics",
@@ -351,14 +363,15 @@ function Order() {
       title: "ACTIONS",
       key: "actions",
       fixed: "right",
-      width: 140,
       render: (_, record) => (
         <div className="flex items-center gap-2">
           <AssignRider orderId={record._id} />
           <DeleteOrder orderId={record._id} />
+          <UpdateOrderStatus currentStatus={record.status}/>
         </div>
       ),
     },
+    
   ];
 
   return (
