@@ -40,6 +40,18 @@ const AuthProvider = ({ children }) => {
     }
   };
 
+  // logout user
+  const logout = async () => {
+    try {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("userId");
+      setIsLoggedin(false);
+      setUser(null);
+    } catch (error) {
+      console.log("[Failed to logout]", error);
+    }
+  };
+
   //   check is logged in
   useEffect(() => {
     async function handleFetchUser() {
@@ -78,9 +90,6 @@ const AuthProvider = ({ children }) => {
     handleFetchUser();
   }, []);
 
-  const logout = () => {
-    setIsLoggedin(false);
-  };
 
   const authValues = {
     user,

@@ -46,11 +46,11 @@ function RiderStatus({ initialAccount, initialDuty }) {
       ),
     },
     {
-      key: 'waiting',
+      key: 'waiting for approved',
       label: (
         <div className="flex items-center gap-2 text-blue-600">
           <UserMinus size={18} />
-          Waiting Approval
+          waiting for approved
         </div>
       ),
     },

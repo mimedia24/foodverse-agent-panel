@@ -7,8 +7,10 @@ import {
   Settings,
   Menu,
   X,
+  LogOut,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
+import { useAuth } from "../../context/authContext";
 
 const NavItem = ({ icon: Icon, label, active }) => (
   <button
@@ -25,7 +27,7 @@ const NavItem = ({ icon: Icon, label, active }) => (
 
 export const Sidebar = ({ isOpen, toggleSidebar }) => {
   const location = useLocation();
-  console.log("[navigation]", location.pathname);
+  const { logout } = useAuth();
 
   return (
     <>
@@ -79,6 +81,9 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
             label="Settings"
             active={location.pathname.includes("/settings") ? true : false}
           />
+          <div onClick={() => logout()}>
+            <NavItem icon={LogOut} label="Logout" />
+          </div>
         </nav>
       </div>
 
@@ -104,7 +109,9 @@ const Layout = ({ children }) => {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b lg:hidden px-4 py-3 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-800">FOODVERSE-FLEET</h2>
+          <h2 className="text-xl font-semibold text-gray-800">
+            FOODVERSE-FLEET
+          </h2>
           <button
             onClick={() => setIsSidebarOpen(true)}
             className="p-2 rounded-md hover:bg-gray-100"

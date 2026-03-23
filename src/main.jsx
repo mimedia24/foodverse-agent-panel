@@ -12,6 +12,7 @@ import Restaurant from "./screens/Restaurant.jsx";
 import Riders from "./screens/Riders.jsx";
 import RegisterRider from "./screens/RegisterRider.jsx";
 import RiderPayment from "./screens/RiderPayment.jsx";
+import MenuScreen from "./screens/MenuScreen.jsx";
 
 const queryClient = new QueryClient();
 
@@ -45,7 +46,6 @@ createRoot(document.getElementById("root")).render(
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/restaurants"
             element={
@@ -54,11 +54,15 @@ createRoot(document.getElementById("root")).render(
               </ProtectedRoute>
             }
           />
-
-
-
+          <Route
+            path="/restaurants/menu/:restaurantId"
+            element={
+              <ProtectedRoute>
+                <MenuScreen />
+              </ProtectedRoute>
+            }
+          />
           {/* =====================riders ======================== */}
-
           <Route
             path="/riders"
             element={
@@ -74,7 +78,8 @@ createRoot(document.getElementById("root")).render(
                 <RegisterRider />
               </ProtectedRoute>
             }
-          /> <Route
+          />{" "}
+          <Route
             path="/rider-payment/:riderId"
             element={
               <ProtectedRoute>
@@ -82,7 +87,6 @@ createRoot(document.getElementById("root")).render(
               </ProtectedRoute>
             }
           />
-
           {/* ==============auth================ */}
           {/* auth screen */}
           <Route path="/login" element={<Login />} />

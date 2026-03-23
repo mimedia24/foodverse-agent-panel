@@ -9,7 +9,6 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const onFinish = (values) => {
-    console.log("Login values:", values);
     login({
       phoneNumber: values.phone,
       password: values.password,
