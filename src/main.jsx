@@ -13,6 +13,7 @@ import Riders from "./screens/Riders.jsx";
 import RegisterRider from "./screens/RegisterRider.jsx";
 import RiderPayment from "./screens/RiderPayment.jsx";
 import MenuScreen from "./screens/MenuScreen.jsx";
+import OrderMap from "./screens/OrderMap";
 
 const queryClient = new QueryClient();
 
@@ -87,6 +88,7 @@ createRoot(document.getElementById("root")).render(
               </ProtectedRoute>
             }
           />
+          <Route path="/order-map" element={<OrderMap />} />
           {/* ==============auth================ */}
           {/* auth screen */}
           <Route path="/login" element={<Login />} />

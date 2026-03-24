@@ -15,7 +15,6 @@ function AssignRider({ orderId }) {
     visible: false,
   });
 
-  //   assign rider
   async function handleAssignRider(riderId) {
     try {
       if (!orderId || !riderId) {
@@ -44,7 +43,6 @@ function AssignRider({ orderId }) {
         }));
       }
     } catch (error) {
-      console.log(error);
       setResultModal((prev) => ({
         ...prev,
         visible: true,
@@ -60,9 +58,10 @@ function AssignRider({ orderId }) {
 
   return (
     <div>
-      <Button type={"primary"} onClick={() => setModalOpen(true)}>
-        Assign rider
+      <Button size="small" type="primary" onClick={() => setModalOpen(true)}>
+        Assign
       </Button>
+
       <GlobalModal
         title={"Assign rider"}
         open={modalOpen}

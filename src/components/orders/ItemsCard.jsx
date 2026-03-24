@@ -7,13 +7,10 @@ function ItemsCard({ items }) {
   const [itemsModal, setItemsModal] = useState(false);
   const baseURL = image_uri;
 
-  // --- Calculations using reduce ---
-
-  // 1. Total Restaurant (Base) Price
   const totalBasePrice = items?.reduce(
     (acc, item) =>
       acc + Number(item.basedPrice || 0) * Number(item.quantity || 1),
-    0,
+    0
   );
 
   const totalAddonsPrice = items?.reduce((acc, item) => {
@@ -30,12 +27,8 @@ function ItemsCard({ items }) {
 
   return (
     <div>
-      <Button
-        type="primary"
-        variant="outlined"
-        onClick={() => setItemsModal(true)}
-      >
-        View menu ({items?.length || 0})
+      <Button size="small" type="primary" onClick={() => setItemsModal(true)}>
+        Menu ({items?.length || 0})
       </Button>
 
       <GlobalModal
@@ -51,7 +44,6 @@ function ItemsCard({ items }) {
               key={item._id || index}
               className="border rounded-xl p-4 bg-gray-50 hover:bg-white transition-colors border-gray-200"
             >
-              {/* Main Item Header */}
               <div className="flex justify-between items-start gap-4">
                 <div className="flex gap-3">
                   <img
@@ -85,7 +77,6 @@ function ItemsCard({ items }) {
                 </div>
               </div>
 
-              {/* Pricing Section */}
               <div className="mt-4 grid grid-cols-2 gap-4 bg-white p-3 rounded-lg border border-dashed border-gray-300">
                 <div>
                   <p className="text-[10px] text-gray-400 uppercase font-bold">
@@ -108,7 +99,6 @@ function ItemsCard({ items }) {
                 </div>
               </div>
 
-              {/* Addons Section */}
               {item.addons?.length > 0 && (
                 <div className="mt-4">
                   <p className="text-xs font-bold text-gray-500 mb-2 flex items-center gap-2">
@@ -143,7 +133,6 @@ function ItemsCard({ items }) {
             </div>
           ))}
 
-          {/* Summary Footer Section */}
           {items?.length > 0 && (
             <div className="mt-4 p-5 bg-gray-900 rounded-2xl text-white">
               <h4 className="text-gray-400 text-xs uppercase font-bold mb-3 tracking-widest">

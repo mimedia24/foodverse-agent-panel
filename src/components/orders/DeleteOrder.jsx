@@ -13,7 +13,6 @@ function DeleteOrder({ orderId }) {
   });
 
   const queryClient = useQueryClient();
-
   const [loading, setLoading] = useState(false);
 
   async function handleDeleteOrder(orderId) {
@@ -30,7 +29,6 @@ function DeleteOrder({ orderId }) {
         }));
       }
     } catch (error) {
-      console.log(error);
       setDeleteResponseModal((prev) => ({
         ...prev,
         visible: true,
@@ -41,17 +39,19 @@ function DeleteOrder({ orderId }) {
       setLoading(false);
     }
   }
+
   return (
     <div>
       <Popconfirm
         title="Delete the order"
-        description="Are you sure to delete this order?"
+        description="Are you sure?"
         onConfirm={() => handleDeleteOrder(orderId)}
-        onCancel={() => console.log("Cancel delete")}
         okText="Yes"
         cancelText="No"
       >
-        <Button type={"primary"}>Delete</Button>
+        <Button size="small" danger>
+          Del
+        </Button>
       </Popconfirm>
 
       <CustomAlert

@@ -5,7 +5,6 @@ import {
   Card,
   Typography,
   Input,
-  DatePicker,
   Row,
   Col,
   Button,
@@ -18,7 +17,6 @@ import {
   EnvironmentOutlined,
   CopyOutlined,
   CalendarOutlined,
-  DollarCircleOutlined,
 } from "@ant-design/icons";
 import { useSearchParams } from "react-router";
 import {
@@ -36,7 +34,6 @@ import DeleteOrder from "../components/orders/DeleteOrder";
 import UpdateOrderStatus from "../components/orders/UpdateOrderStatus";
 
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
 
 const StatusBadge = ({ status }) => {
   const statusConfig = {
@@ -49,11 +46,13 @@ const StatusBadge = ({ status }) => {
     cancelled: { color: "volcano" },
     "cancelled by restaurant": { color: "red" },
   };
+
   const config = statusConfig[status] || { color: "default" };
+
   return (
     <Tag
       color={config.color}
-      className="rounded-full px-3 py-0.5 border-none font-bold uppercase text-[10px]"
+      className="rounded-full px-2 py-0 border-none font-bold uppercase text-[10px]"
     >
       {status}
     </Tag>
@@ -63,11 +62,11 @@ const StatusBadge = ({ status }) => {
 function Order() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
+  const [errors, setErrors] = useState(null);
 
   const currentPage = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "20");
   const userIdSearch = searchParams.get("userId");
-  const [errors, setErrors] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -83,18 +82,19 @@ function Order() {
       let url = userIdSearch
         ? `/zone/orders/user/${userIdSearch}?page=${currentPage}&limit=${limit}`
         : `/zone/order-list?page=${currentPage}&limit=${limit}`;
+
       const method = userIdSearch ? "GET" : "POST";
       const payload = userIdSearch ? null : { zoneId: user?.zoneId };
-      const response = await (method === "GET"
-        ? api.get(url)
-        : api.post(url, payload));
+
+      const response =
+        method === "GET" ? await api.get(url) : await api.post(url, payload);
+
       return response.data;
     },
     placeholderData: keepPreviousData,
     enabled: !!user?.zoneId,
   });
 
-  // search phone number
   const handleSearchByPhoneNumber = async (phoneNumber) => {
     if (phoneNumber.length !== 11) {
       setErrors((prev) => ({ ...prev, phoneError: "Invalid phone number" }));
@@ -106,55 +106,41 @@ function Order() {
     try {
       const { data } = await api.get(`/zone/order/phone-number/${phoneNumber}`);
       if (data.success) {
-        queryClient.setQueriesData(["orders"], (oldData) => {
-          return {
-            data: data.result,
-          };
-        });
+        queryClient.setQueriesData(["orders"], () => ({
+          data: data.result,
+        }));
       } else {
-        queryClient.setQueriesData(["orders"], (oldData) => {
-          return [];
-        });
+        queryClient.setQueriesData(["orders"], () => []);
       }
     } catch (error) {
       return null;
     }
   };
 
-  // search phone number
   const handleSearchByRiderId = async (riderId) => {
     try {
       const { data } = await api.get(`/zone/order/rider/${riderId}`);
       if (data.success) {
-        queryClient.setQueriesData(["orders"], (oldData) => {
-          return {
-            data: data.result,
-          };
-        });
+        queryClient.setQueriesData(["orders"], () => ({
+          data: data.result,
+        }));
       } else {
-        queryClient.setQueriesData(["orders"], (oldData) => {
-          return [];
-        });
+        queryClient.setQueriesData(["orders"], () => []);
       }
     } catch (error) {
       return null;
     }
   };
 
-  // search user id
   const handleSearchByUserId = async (userId) => {
     try {
       const { data } = await api.get(`/zone/order/user/${userId}`);
       if (data.success) {
-        queryClient.setQueriesData(["orders"], (oldData) => {
-          return {
-            data: data.result,
-          };
-        });
+        queryClient.setQueriesData(["orders"], () => ({
+          data: data.result,
+        }));
       } else {
-        queryClient.setQueriesData(["orders"], (oldData) => {
-          return [];
-        });
+        queryClient.setQueriesData(["orders"], () => []);
       }
     } catch (error) {
       return null;
@@ -163,187 +149,184 @@ function Order() {
 
   const columns = [
     {
-      title: "ORDER ID",
+      title: "ORDER",
       dataIndex: "_id",
       key: "_id",
       fixed: "left",
-      width: 130,
+      width: 95,
       render: (id) => (
         <Text
           copyable={{ text: id, icon: [<CopyOutlined key="copy" />] }}
-          className="font-bold text-indigo-600"
+          className=" text-indigo-600 text-[11px]"
         >
           #{id.slice(-6).toUpperCase()}
         </Text>
       ),
     },
     {
-      title: "RESTAURANT ID",
+      title: "RES ID",
       dataIndex: "restaurantId",
       key: "restaurantId",
-      width: 130,
+      width: 90,
       render: (id) => (
-        <Text
-          copyable={{ text: id }}
-          className="text-gray-500 font-mono text-[11px]"
-        >
+        <Text copyable={{ text: id }} className="text-[11px] text-slate-500">
           #{id?.slice(-6)}
         </Text>
       ),
     },
     {
-      title: "RESTAURANT NAME",
+      title: "RESTAURANT",
       dataIndex: "restaurantName",
       key: "restaurantName",
-      width: 180,
+      width: 125,
+      ellipsis: true,
       render: (name) => (
-        <Text strong className="text-gray-800">
-          {name}
-        </Text>
+        <Tooltip title={name}>
+          <Text strong className="text-[12px] text-slate-800">
+            {name}
+          </Text>
+        </Tooltip>
       ),
     },
     {
-      title: "USER ID",
+      title: "USER",
       dataIndex: "userId",
       key: "userId",
-      width: 130,
+      width: 90,
       render: (id) => (
-        <Text
-          copyable={{ text: id }}
-          className="text-gray-500 font-mono text-[11px]"
-        >
+        <Text copyable={{ text: id }} className="text-[11px] text-slate-500">
           #{id?.slice(-6)}
         </Text>
       ),
     },
     {
-      title: "RIDER ID",
+      title: "RIDER",
       dataIndex: "riderId",
       key: "riderId",
-      width: 130,
+      width: 80,
       render: (id) =>
         id ? (
-          <Text
-            copyable={{ text: id }}
-            className="text-gray-500 font-mono text-[11px]"
-          >
+          <Text copyable={{ text: id }} className="text-[11px] text-slate-500">
             #{id.slice(-6)}
           </Text>
         ) : (
-          <Text type="secondary">N/A</Text>
+          <Text type="secondary" className="text-[11px]">
+            N/A
+          </Text>
         ),
     },
     {
       title: "STATUS",
       dataIndex: "status",
       key: "status",
-      width: 150,
+      width: 80,
       render: (status) => <StatusBadge status={status} />,
     },
     {
       title: "ITEMS",
       dataIndex: "items",
       key: "items",
-      width: 120,
+      width: 80,
       render: (items) => <ItemsCard items={items} />,
     },
     {
-      title: "DATE (BD)",
+      title: "DATE",
       dataIndex: "orderDate",
       key: "orderDate",
-      width: 170,
+      width: 80,
       render: (date) => (
-        <Space size={4}>
-          <CalendarOutlined className="text-gray-400" />
-          <Text className="text-[12px]">
-            {dayjs(date).format("DD/MM/YY hh:mm A")}
-          </Text>
-        </Space>
+        <div className="leading-tight">
+          <div className="flex items-center gap-1 text-[11px] text-slate-700">
+            <CalendarOutlined className="text-slate-400" />
+            {dayjs(date).format("DD/MM/YY")}
+          </div>
+          <div className="text-[12px] text-slate-400 ml-[17px]">
+            {dayjs(date).format("hh:mm A")}
+          </div>
+        </div>
       ),
     },
     {
       title: "CUSTOMER",
       key: "customer",
-      width: 180,
+      width: 100,
       render: (_, record) => (
-        <div className="flex flex-col">
-          <Text strong className="text-indigo-700">
+        <div className="leading-tight">
+          <div className="font-semibold text-[16px] text-slate-800">
             {record.customerPhone}
-          </Text>
+          </div>
           <Tooltip title={record.customerMessage}>
-            <Text type="secondary" className="text-[11px] truncate w-[150px]">
-              {record.customerMessage || "No message"}
-            </Text>
+            <div className="text-[10px] text-slate-400 truncate max-w-[105px]">
+              {record.customerMessage || "No msg"}
+            </div>
           </Tooltip>
         </div>
       ),
     },
     {
-      title: "LOCATIONS",
+      title: "LOCATION",
       key: "locations",
-      width: 300,
-      render: (_, record) => (
-        <div className="space-y-1 py-1">
-          <div className="flex gap-1 items-start text-[11px]">
-            <Tag color="green" className="m-0 scale-75 origin-left">
-              FROM
-            </Tag>
-            <Text className="leading-tight text-gray-500 italic">
-              {record.restaurantLocation}
-            </Text>
-          </div>
-          <div className="flex gap-1 items-start text-[11px]">
-            <Tag color="red" className="m-0 scale-75 origin-left">
-              TO
-            </Tag>
-            <Text className="leading-tight text-gray-600 font-medium">
-              {record.dropLocation}
-            </Text>
-          </div>
-        </div>
-      ),
-    },
-    {
-      title: "PRICING",
-      key: "price",
-      width: 180,
-      render: (_, record) => (
-        <div className="bg-gray-50 p-2 rounded-lg border border-gray-100">
-          <div className="flex justify-between items-center">
-            <Text className="text-[10px] uppercase text-gray-400">Total:</Text>
-            <Text strong className="text-green-600">
-              TK {record.totalAmount?.toFixed(0)}
-            </Text>
-          </div>
-          <div className="flex justify-between items-center">
-            <Text className="text-[10px] uppercase text-gray-400">
-              Rider Fee:
-            </Text>
-            <Text className="text-blue-500 font-medium">
-              TK {record.riderFee?.toFixed(0)}
-            </Text>
-          </div>
-        </div>
-      ),
-    },
-    
-    {
-      title: "Platform",
-      key: "platform",
-      width: 100,
-      render: (_, record) => (
-        <div className="flex items-center gap-2 bg-lime-100 px-2 py-1 rounded-lg justify-center">
-          {record.platform}
-        </div>
-      ),
-    },
-    {
-      title: "LOGISTICS",
-      key: "logistics",
       width: 150,
       render: (_, record) => (
-        <div className="space-y-1">
-          <div className="text-[12px] font-bold text-gray-700">
+        <div className="space-y-1 text-[10px] leading-tight">
+          <div className="flex items-start gap-1">
+            <Tag color="green" className="m-0 px-1 py-0 text-[9px]">
+              FROM
+            </Tag>
+            <Tooltip title={record.restaurantLocation}>
+              <span className="truncate max-w-[125px] text-slate-500 italic">
+                {record.restaurantLocation}
+              </span>
+            </Tooltip>
+          </div>
+          <div className="flex items-start gap-1">
+            <Tag color="red" className="m-0 px-1 py-0 text-[9px]">
+              TO
+            </Tag>
+            <Tooltip title={record.dropLocation}>
+              <span className="truncate max-w-[125px] text-slate-700 font-medium">
+                {record.dropLocation}
+              </span>
+            </Tooltip>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: "AMOUNT",
+      key: "price",
+      width: 90,
+      render: (_, record) => (
+        <div className="rounded-xl bg-slate-50 px-2 py-2 border border-slate-100 leading-tight">
+          <div className="text-[9px] uppercase text-slate-400">Total</div>
+          <div className="text-[14px] font-bold text-emerald-600">
+            TK {record.totalAmount?.toFixed(0)}
+          </div>
+          <div className="text-[12px] text-blue-500 mt-1">
+            Fee {record.riderFee?.toFixed(0)}
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: "PTFM",
+      key: "platform",
+      width: 50,
+      render: (_, record) => (
+        <div className="flex justify-center">
+          <span className="rounded-lg bg-lime-100 px-2 py-1 text-[10px] font-semibold text-lime-700">
+            {record.platform}
+          </span>
+        </div>
+      ),
+    },
+    {
+      title: "MAP",
+      key: "logistics",
+      width: 65,
+      render: (_, record) => (
+        <div className="text-center leading-tight">
+          <div className="text-[11px] font-bold text-slate-700">
             {record.distance?.toFixed(2)} KM
           </div>
           <Button
@@ -352,9 +335,9 @@ function Order() {
             icon={<EnvironmentOutlined />}
             href={`https://www.google.com/maps?q=${record.coords?.lat},${record.coords?.long}`}
             target="_blank"
-            className="p-0 h-auto text-[11px]"
+            className="p-0 h-auto text-[10px]"
           >
-            Track Map
+            View
           </Button>
         </div>
       ),
@@ -363,84 +346,88 @@ function Order() {
       title: "ACTIONS",
       key: "actions",
       fixed: "right",
+      width: 150,
       render: (_, record) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <AssignRider orderId={record._id} />
           <DeleteOrder orderId={record._id} />
-          <UpdateOrderStatus currentStatus={record.status}/>
+          <UpdateOrderStatus currentStatus={record.status} />
         </div>
       ),
     },
-    
   ];
 
   return (
     <Layout>
-      <div className="p-4 bg-gray-50 min-h-screen">
-        {/* Modern Header and Filter Section */}
-        <Card className="mb-4 border-none shadow-sm rounded-xl">
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} md={12}>
-              <Title level={3} className="m-0">
+      <div className="p-2 md:p-0 bg-slate-100 min-h-screen">
+        <Card className="mb-3 border-none shadow-sm rounded-2xl">
+          <Row gutter={[10, 10]} align="middle">
+            <Col xs={24} md={8}>
+              <Title level={3} className="!m-0 !text-[28px]">
                 Order Dashboard
               </Title>
-              <Text type="secondary">Managing Zone ID: {user?.zoneId}</Text>
+              <Text type="secondary" className="text-[12px]">
+                Managing Zone ID: {user?.zoneId}
+              </Text>
             </Col>
-            <Col xs={24} md={12} className="text-right">
+
+            <Col xs={24} md={16} className="text-right">
               <Button
                 type="primary"
                 icon={<ReloadOutlined />}
                 onClick={() => refetch()}
-                className="bg-indigo-600 rounded-lg h-10"
+                className="rounded-xl h-9 px-4"
               >
-                Refresh Data
+                Refresh
               </Button>
             </Col>
 
-            <Col xs={24} sm={12} md={6}>
+            <Col xs={24} sm={8}>
               <Input
                 placeholder="User ID..."
                 prefix={<SearchOutlined />}
                 defaultValue={searchParams.get("userId")}
                 onPressEnter={(e) => handleSearchByUserId(e.target.value)}
                 allowClear
-                className="rounded-lg h-10 shadow-sm"
+                className="rounded-xl h-9"
               />
             </Col>
-            <Col xs={24} sm={12} md={6}>
+
+            <Col xs={24} sm={8}>
               <Input
                 placeholder="Rider ID..."
                 prefix={<SearchOutlined />}
                 onChange={(e) => handleSearchByRiderId(e.target.value)}
                 allowClear
-                className="rounded-lg h-10 shadow-sm"
+                className="rounded-xl h-9"
               />
             </Col>
-            <Col xs={24} sm={12} md={6}>
+
+            <Col xs={24} sm={8}>
               <Input
                 placeholder="Phone..."
                 prefix={<SearchOutlined />}
                 onChange={(e) => handleSearchByPhoneNumber(e.target.value)}
                 allowClear
-                className="rounded-lg h-10 shadow-sm"
+                className="rounded-xl h-9"
               />
               {errors?.phoneError && (
-                <h1 className={"text-red-500 font-bold"}>
-                  {errors?.phoneError}
-                </h1>
+                <div className="mt-1 text-[11px] font-semibold text-red-500">
+                  {errors.phoneError}
+                </div>
               )}
             </Col>
           </Row>
         </Card>
 
-        {/* Table Section */}
-        <Card className="border-none shadow-sm rounded-xl overflow-hidden">
+        <Card className="border-none shadow-sm rounded-2xl overflow-hidden">
           <Table
             columns={columns}
             dataSource={data?.data || []}
             rowKey="_id"
             loading={isLoading}
-            scroll={{ x: 2200 }} // Increased for many columns
+            scroll={{ x: 1380 }}
+            size="small"
             style={{ opacity: isPlaceholderData ? 0.7 : 1 }}
             onChange={(pagination) => {
               const newParams = new URLSearchParams(searchParams);
@@ -453,7 +440,7 @@ function Order() {
               pageSize: limit,
               total: data?.totalCount || 0,
               showSizeChanger: true,
-              className: "p-4 border-t",
+              className: "px-2 py-3",
             }}
           />
         </Card>

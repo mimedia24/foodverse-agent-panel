@@ -8,19 +8,21 @@ import {
   Menu,
   X,
   LogOut,
+  MapPin,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "../../context/authContext";
 
-const NavItem = ({ icon: Icon, label, active }) => (
+const NavItem = ({ icon: Icon, label, active, onClick }) => (
   <button
-    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+    onClick={onClick}
+    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 ${
       active
-        ? "bg-blue-600 text-white"
-        : "text-gray-400 hover:bg-gray-800 hover:text-white"
+        ? "bg-blue-600 text-white shadow-[0_10px_25px_rgba(37,99,235,0.25)]"
+        : "text-slate-300 hover:bg-white/10 hover:text-white"
     }`}
   >
-    <Icon size={20} />
+    <Icon size={19} />
     <span className="font-medium">{label}</span>
   </button>
 );
@@ -29,67 +31,100 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
   const location = useLocation();
   const { logout } = useAuth();
 
+  const closeAfterClick = () => {
+    if (window.innerWidth < 1024) toggleSidebar();
+  };
+
   return (
     <>
-      <div
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 transform ${
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-[280px] bg-[linear-gradient(180deg,#020617_0%,#07132d_100%)] text-white transform transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "-translate-x-full"
-        } transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}
+        }`}
       >
-        <div className="flex items-center justify-between px-6 py-4 lg:justify-center">
-          <h1 className="text-white text-2xl font-bold tracking-tight">
-            Foodverse<span className="text-blue-500">Admin</span>
-          </h1>
-          <button className="lg:hidden text-white" onClick={toggleSidebar}>
-            <X size={24} />
+        <div className="flex items-start justify-between px-5 py-5 border-b border-white/10">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-blue-300">
+              Food Verse Agent
+            </p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight">
+              Admin <span className="text-blue-500">Panel</span>
+            </h1>
+          </div>
+
+          <button
+            className="rounded-lg p-2 text-slate-300 hover:bg-white/10 hover:text-white"
+            onClick={toggleSidebar}
+          >
+            <X size={22} />
           </button>
         </div>
 
-        <nav className="mt-6 px-4 space-y-2">
-          <Link to={"/"}>
+        <nav className="px-4 py-5 space-y-2">
+          <Link to="/" onClick={closeAfterClick}>
             <NavItem
               icon={LayoutDashboard}
               label="Dashboard"
-              active={location.pathname === "/" ? true : false}
+              active={
+                location.pathname === "/" || location.pathname === "/dashboard"
+              }
             />
           </Link>
-          <Link to={"/orders"} className={"my-2"}>
+
+          <Link to="/orders" onClick={closeAfterClick}>
             <NavItem
               icon={ShoppingCart}
               label="Orders"
-              active={location.pathname.includes("/orders") ? true : false}
+              active={location.pathname.includes("/orders")}
             />
           </Link>
 
-          <Link to={"/restaurants"} className={"my-2"}>
+          <Link to="/restaurants" onClick={closeAfterClick}>
             <NavItem
               icon={Utensils}
               label="Restaurants"
-              active={location.pathname.includes("/restaurants") ? true : false}
+              active={location.pathname.includes("/restaurants")}
             />
           </Link>
 
-          <Link to={"/riders"} className={"my-2"}>
+          <Link to="/riders" onClick={closeAfterClick}>
             <NavItem
               icon={Bike}
               label="Riders"
-              active={location.pathname.startsWith("/rider") ? true : false}
+              active={
+                location.pathname.startsWith("/rider") ||
+                location.pathname.includes("/riders")
+              }
             />
           </Link>
-          <NavItem
-            icon={Settings}
-            label="Settings"
-            active={location.pathname.includes("/settings") ? true : false}
-          />
-          <div onClick={() => logout()}>
-            <NavItem icon={LogOut} label="Logout" />
+
+          <Link to="/order-map" onClick={closeAfterClick}>
+            <NavItem
+              icon={MapPin}
+              label="Order Map"
+              active={location.pathname.includes("/order-map")}
+            />
+          </Link>
+
+          <button className="w-full text-left">
+            <NavItem
+              icon={Settings}
+              label="Settings"
+              active={location.pathname.includes("/settings")}
+            />
+          </button>
+
+          <div className="pt-4 mt-4 border-t border-white/10">
+            <div onClick={() => logout()}>
+              <NavItem icon={LogOut} label="Logout" />
+            </div>
           </div>
         </nav>
-      </div>
+      </aside>
 
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[2px]"
           onClick={toggleSidebar}
         />
       )}
@@ -101,26 +136,34 @@ const Layout = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden">
+    <div className="min-h-screen bg-slate-100">
       <Sidebar
         isOpen={isSidebarOpen}
         toggleSidebar={() => setIsSidebarOpen(false)}
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b lg:hidden px-4 py-3 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-800">
-            FOODVERSE-FLEET
-          </h2>
-          <button
-            onClick={() => setIsSidebarOpen(true)}
-            className="p-2 rounded-md hover:bg-gray-100"
-          >
-            <Menu size={24} />
-          </button>
+      <div className="min-h-screen">
+        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+          <div className="flex items-center gap-4 px-4 py-3 md:px-6">
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white p-2.5 text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              <Menu size={22} />
+            </button>
+
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-[0.28em] text-blue-600">
+                Food Verse Agent Admin
+              </p>
+              <h2 className="text-2xl font-black tracking-tight text-slate-950">
+                Agent Panel
+              </h2>
+            </div>
+          </div>
         </header>
 
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 lg:p-8">
+        <main className="overflow-x-hidden overflow-y-auto p-4 md:p-0">
           {children}
         </main>
       </div>
