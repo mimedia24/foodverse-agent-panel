@@ -233,7 +233,7 @@ function Order() {
       title: "DATE",
       dataIndex: "orderDate",
       key: "orderDate",
-      width: 80,
+      width: 100,
       render: (date) => (
         <div className="leading-tight">
           <div className="flex items-center gap-1 text-[11px] text-slate-700">
@@ -249,7 +249,7 @@ function Order() {
     {
       title: "CUSTOMER",
       key: "customer",
-      width: 100,
+      width: 130,
       render: (_, record) => (
         <div className="leading-tight">
           <div className="font-semibold text-[16px] text-slate-800">
@@ -311,7 +311,7 @@ function Order() {
     {
       title: "PTFM",
       key: "platform",
-      width: 50,
+      width: 80,
       render: (_, record) => (
         <div className="flex justify-center">
           <span className="rounded-lg bg-lime-100 px-2 py-1 text-[10px] font-semibold text-lime-700">
@@ -323,7 +323,7 @@ function Order() {
     {
       title: "MAP",
       key: "logistics",
-      width: 65,
+      width: 75,
       render: (_, record) => (
         <div className="text-center leading-tight">
           <div className="text-[11px] font-bold text-slate-700">

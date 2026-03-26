@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Badge,
@@ -26,6 +25,7 @@ import {
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
 import { image_uri } from "../utils/constants";
+import { useAuth } from "../context/authContext";
 
 const { Title, Text } = Typography;
 const { Search: SearchInput } = Input;
@@ -43,7 +43,10 @@ function normalizeMenu(menu) {
   const restaurantValue =
     typeof menu?.restaurantId === "string"
       ? menu.restaurantId
-      : menu?.restaurantId?._id || menu?.restaurant?._id || "N/A";
+      : menu?.restaurantId?._id ||
+        menu?.restaurant?._id ||
+        menu?.sourceRestaurantId ||
+        "N/A";
 
   const totalPrice = Number(menu?.basedPrice || 0) + Number(menu?.plateformFee || 0);
 
@@ -69,6 +72,9 @@ function StatusTag({ status }) {
   }
   if (normalized === "discontinued") {
     return <Tag color="default">discontinued</Tag>;
+  }
+  if (normalized === "false") {
+    return <Tag> false </Tag>;
   }
 
   return <Tag>{status || "unknown"}</Tag>;
@@ -183,8 +189,65 @@ function UpdatePlatformFeeButton({ menuId, currentFee = 0, queryKey }) {
   );
 }
 
-function MenuScreen() {
-  const { restaurantId } = useParams();
+async function fetchAllRestaurants(zoneId) {
+  const limit = 100;
+  const maxPages = 20;
+  let page = 1;
+  let items = [];
+
+  while (page <= maxPages) {
+    const response = await api.post("/zone/restaurant-list", {
+      zoneId,
+      page,
+      limit,
+    });
+
+    const rows = Array.isArray(response?.data?.result) ? response.data.result : [];
+    items = [...items, ...rows];
+
+    if (!rows.length || rows.length < limit) break;
+    page += 1;
+  }
+
+  return Array.from(new Map(items.map((item) => [item._id, item])).values());
+}
+
+async function fetchAllMenusByZone(zoneId) {
+  const restaurants = await fetchAllRestaurants(zoneId);
+  const restaurantIds = restaurants.map((item) => item?._id).filter(Boolean);
+
+  const menuChunks = [];
+  const chunkSize = 5;
+
+  for (let i = 0; i < restaurantIds.length; i += chunkSize) {
+    const chunk = restaurantIds.slice(i, i + chunkSize);
+    const results = await Promise.allSettled(
+      chunk.map((restaurantId) => api.get(`/zone/restaurant/menu-list/${restaurantId}`)),
+    );
+
+    results.forEach((result, index) => {
+      if (result.status !== "fulfilled") return;
+
+      const restaurantId = chunk[index];
+      const rows = Array.isArray(result?.value?.data?.result)
+        ? result.value.data.result
+        : [];
+
+      const mapped = rows.map((menu) => ({
+        ...menu,
+        sourceRestaurantId: restaurantId,
+      }));
+
+      menuChunks.push(...mapped);
+    });
+  }
+
+  return Array.from(new Map(menuChunks.map((item) => [item._id, item])).values());
+}
+
+function AllMenus() {
+  const { user } = useAuth();
+  const zoneId = user?.zoneId || user?.zoneID || user?.zone?._id || null;
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -192,18 +255,14 @@ function MenuScreen() {
   const [restaurantIdSearch, setRestaurantIdSearch] = useState("");
   const [statusDrafts, setStatusDrafts] = useState({});
 
-  const queryKey = ["menu", restaurantId];
-
-  const fetchRestaurantMenu = async () => {
-    const { data } = await api.get(`/zone/restaurant/menu-list/${restaurantId}`);
-    return Array.isArray(data?.result) ? data.result : [];
-  };
+  const queryKey = ["all-menus", zoneId];
 
   const { data: rawMenuData = [], isLoading, isFetching } = useQuery({
-    queryFn: fetchRestaurantMenu,
+    queryFn: () => fetchAllMenusByZone(zoneId),
     queryKey,
-    enabled: !!restaurantId,
+    enabled: !!zoneId,
     refetchOnWindowFocus: false,
+    staleTime: 60 * 1000,
   });
 
   const menuData = useMemo(() => rawMenuData.map(normalizeMenu), [rawMenuData]);
@@ -430,7 +489,7 @@ function MenuScreen() {
     return (
       <Layout>
         <div className="flex min-h-[80vh] items-center justify-center">
-          <Spin size="large" tip="Loading menu items..." />
+          <Spin size="large" tip="Loading all menus..." />
         </div>
       </Layout>
     );
@@ -446,14 +505,11 @@ function MenuScreen() {
                 Food Verse Agent Menu Control
               </p>
               <Title level={2} style={{ margin: "8px 0 0", fontWeight: 900 }}>
-                Menu Management
+                All Menus
               </Title>
-              <Text type="secondary">All menus with full pricing, approval and control columns.</Text>
-              {!restaurantId ? (
-                <div className="mt-3">
-                  <Tag color="volcano">No restaurantId found in route</Tag>
-                </div>
-              ) : null}
+              <Text type="secondary">
+                All restaurant menus together with pricing, approval and control columns.
+              </Text>
             </div>
 
             <div className="flex items-center gap-2 self-start rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -533,7 +589,7 @@ function MenuScreen() {
             rowKey="_id"
             columns={columns}
             dataSource={filteredData}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
+            pagination={{ pageSize: 20, showSizeChanger: false, position: ["bottomRight"] }}
             scroll={{ x: 2600 }}
             size="middle"
             bordered={false}
@@ -544,4 +600,4 @@ function MenuScreen() {
   );
 }
 
-export default MenuScreen;
+export default AllMenus;

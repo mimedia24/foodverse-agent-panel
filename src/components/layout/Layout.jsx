@@ -9,6 +9,8 @@ import {
   X,
   LogOut,
   MapPin,
+  ListOrdered,
+  BarChart3,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "../../context/authContext";
@@ -79,6 +81,14 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
             />
           </Link>
 
+          <Link to="/order-map" onClick={closeAfterClick}>
+            <NavItem
+              icon={MapPin}
+              label="Order Map"
+              active={location.pathname.includes("/order-map")}
+            />
+          </Link>          
+
           <Link to="/restaurants" onClick={closeAfterClick}>
             <NavItem
               icon={Utensils}
@@ -98,12 +108,20 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
             />
           </Link>
 
-          <Link to="/order-map" onClick={closeAfterClick}>
+          <Link to="/all-menus" onClick={closeAfterClick}>
             <NavItem
-              icon={MapPin}
-              label="Order Map"
-              active={location.pathname.includes("/order-map")}
+              icon={ListOrdered}
+              label="All Menus"
+              active={location.pathname.includes("/all-menus")}
             />
+          </Link>
+          
+          <Link to="/reports" onClick={closeAfterClick}>
+            <NavItem
+             icon={BarChart3}
+             label="Reports"
+             active={location.pathname.includes("/reports")}
+           />
           </Link>
 
           <button className="w-full text-left">

@@ -14,6 +14,8 @@ import RegisterRider from "./screens/RegisterRider.jsx";
 import RiderPayment from "./screens/RiderPayment.jsx";
 import MenuScreen from "./screens/MenuScreen.jsx";
 import OrderMap from "./screens/OrderMap";
+import AllMenus from "./screens/AllMenus.jsx";
+import Reports from "./screens/Reports.jsx";
 
 const queryClient = new QueryClient();
 
@@ -21,7 +23,6 @@ createRoot(document.getElementById("root")).render(
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <BrowserRouter>
-        {/* dashboard screen */}
         <Routes>
           <Route
             path="/"
@@ -63,7 +64,22 @@ createRoot(document.getElementById("root")).render(
               </ProtectedRoute>
             }
           />
-          {/* =====================riders ======================== */}
+          <Route
+            path="/all-menus"
+            element={
+              <ProtectedRoute>
+                <AllMenus />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute>
+                <Reports />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/riders"
             element={
@@ -79,7 +95,7 @@ createRoot(document.getElementById("root")).render(
                 <RegisterRider />
               </ProtectedRoute>
             }
-          />{" "}
+          />
           <Route
             path="/rider-payment/:riderId"
             element={
@@ -88,9 +104,14 @@ createRoot(document.getElementById("root")).render(
               </ProtectedRoute>
             }
           />
-          <Route path="/order-map" element={<OrderMap />} />
-          {/* ==============auth================ */}
-          {/* auth screen */}
+          <Route
+            path="/order-map"
+            element={
+              <ProtectedRoute>
+                <OrderMap />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/login" element={<Login />} />
         </Routes>
       </BrowserRouter>
