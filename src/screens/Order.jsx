@@ -367,7 +367,7 @@ function Order() {
                 Order Dashboard
               </Title>
               <Text type="secondary" className="text-[12px]">
-                Managing Zone ID: {user?.zoneId}
+                Managing Zone ID : {user?.zoneId}
               </Text>
             </Col>
 
