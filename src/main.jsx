@@ -16,6 +16,7 @@ import MenuScreen from "./screens/MenuScreen.jsx";
 import OrderMap from "./screens/OrderMap";
 import AllMenus from "./screens/AllMenus.jsx";
 import Reports from "./screens/Reports.jsx";
+import AgentPartnerLanding from "./screens/AgentPartnerLanding.jsx";
 
 const queryClient = new QueryClient();
 
@@ -112,7 +113,19 @@ createRoot(document.getElementById("root")).render(
               </ProtectedRoute>
             }
           />
-          <Route path="/login" element={<Login />} />
+          <Route 
+            path="/login" 
+            element={
+              <Login />
+            } 
+          />
+          <Route 
+            path="/agent-opportunity" 
+            element={
+              <AgentPartnerLanding />
+            } 
+          />
+          
         </Routes>
       </BrowserRouter>
     </AuthProvider>
