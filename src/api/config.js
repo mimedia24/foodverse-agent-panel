@@ -1,33 +1,46 @@
 import axios from "axios";
 
-const MODE_TYPE = {
-    PRODUCTION: 'PRODUCTION',
-    DEVELOPEMENT: 'DEVELOPEMENT'
-}
-const currentMode = 'PRODUCTION'
-
-const apiUri = currentMode === 'PRODUCTION' ? 'https://api.foodversedelivery.com/api' : 'http://localhost:3000/api'
-const version = 'v3'
-
+const fallbackBaseUrl = "https://api.foodversedelivery.com/api/v3";
+const envBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
 const api = axios.create({
-    baseURL: apiUri + `/${version}`,
-    timeout: 20000,
-    headers: {
-        'Content-Type': 'application/json',
-    }
-})
-
-
-api.interceptors.request.use((config) => {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-        config.headers.AccessToken = `${token}`;
-    }
-    return config;
-}, (error) => {
-    return Promise.reject(error);
+  baseURL: envBaseUrl || fallbackBaseUrl,
+  timeout: 20000,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
+api.interceptors.request.use(
+  (config) => {
+    const token =
+      localStorage.getItem("accessToken") ||
+      localStorage.getItem("AccessToken");
+
+    if (token) {
+      config.headers.AccessToken = token;
+    }
+
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("AccessToken");
+      localStorage.removeItem("userId");
+
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export default api;
