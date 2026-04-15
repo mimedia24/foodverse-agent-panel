@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Layout from "../components/layout/Layout";
-import { fetchDashboardData } from "../api/mockDashboardApi";
+import { fetchDashboardData } from "../api/dashboardApi";
 import {
   Bike,
   ShoppingBag,

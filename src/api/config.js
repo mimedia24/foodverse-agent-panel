@@ -1,7 +1,8 @@
 import axios from "axios";
 
 const fallbackBaseUrl = "https://api.foodversedelivery.com/api/v3";
-const envBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const envBaseUrl =
+  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_PATH;
 
 const api = axios.create({
   baseURL: envBaseUrl || fallbackBaseUrl,
