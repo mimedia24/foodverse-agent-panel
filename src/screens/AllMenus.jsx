@@ -20,7 +20,7 @@ import {
   Search,
   ShieldCheck,
   Store,
-  Tag as TagIcon,
+  Flame,
 } from "lucide-react";
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
@@ -32,6 +32,22 @@ const { Search: SearchInput } = Input;
 
 function formatMoney(value) {
   return `BDT ${Number(value || 0).toLocaleString("en-BD")}`;
+}
+
+function num(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function calculateSellingPrice(basedPrice, plateformFee) {
+  return num(basedPrice) + num(plateformFee);
+}
+
+function calculateOfferPrice(basedPrice, plateformFee, discountRate) {
+  const sellingPrice = calculateSellingPrice(basedPrice, plateformFee);
+  const discountAmount = (sellingPrice * num(discountRate)) / 100;
+  const offerPrice = sellingPrice - discountAmount;
+  return offerPrice < 0 ? 0 : offerPrice;
 }
 
 function normalizeMenu(menu) {
@@ -48,7 +64,16 @@ function normalizeMenu(menu) {
         menu?.sourceRestaurantId ||
         "N/A";
 
-  const totalPrice = Number(menu?.basedPrice || 0) + Number(menu?.plateformFee || 0);
+  const basedPriceValue = num(menu?.basedPrice);
+  const plateformFeeValue = num(menu?.plateformFee);
+  const discountRateValue = num(menu?.discountRate);
+
+  const sellingPrice = calculateSellingPrice(basedPriceValue, plateformFeeValue);
+  const calculatedOfferPrice = calculateOfferPrice(
+    basedPriceValue,
+    plateformFeeValue,
+    discountRateValue
+  );
 
   return {
     ...menu,
@@ -57,25 +82,22 @@ function normalizeMenu(menu) {
     restaurantIdLabel: restaurantValue,
     titleLabel: menu?.title || menu?.name || "Untitled Menu",
     descriptionLabel: menu?.description || "No description",
-    totalPrice,
+    basedPriceValue,
+    plateformFeeValue,
+    discountRateValue,
+    sellingPrice,
+    calculatedOfferPrice,
+    isApprovedBool: !!menu?.isApproved,
+    isPopularBool: !!menu?.isPopular,
   };
 }
 
 function StatusTag({ status }) {
   const normalized = String(status || "").toLowerCase();
 
-  if (normalized === "in stock") {
-    return <Tag color="blue">in stock</Tag>;
-  }
-  if (normalized === "out of stock") {
-    return <Tag color="red">out of stock</Tag>;
-  }
-  if (normalized === "discontinued") {
-    return <Tag color="default">discontinued</Tag>;
-  }
-  if (normalized === "false") {
-    return <Tag> false </Tag>;
-  }
+  if (normalized === "in stock") return <Tag color="blue">in stock</Tag>;
+  if (normalized === "out of stock") return <Tag color="red">out of stock</Tag>;
+  if (normalized === "discontinued") return <Tag color="default">discontinued</Tag>;
 
   return <Tag>{status || "unknown"}</Tag>;
 }
@@ -85,7 +107,9 @@ function StatsCard({ icon: Icon, label, value, hint }) {
     <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">{label}</p>
+          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
+            {label}
+          </p>
           <h3 className="mt-2 text-2xl font-black text-slate-950">{value}</h3>
           <p className="mt-1 text-xs text-slate-500">{hint}</p>
         </div>
@@ -104,7 +128,7 @@ function UpdateDiscountButton({ menuId, currentDiscountRate = 0, queryKey }) {
 
   const handleSubmit = async () => {
     try {
-      const { data } = await api.put(`/zone/menu/update-discount-rate`, {
+      const { data } = await api.put("/zone/menu/update-discount-rate", {
         menuId,
         discountRate: Number(discountRate || 0),
       });
@@ -150,7 +174,7 @@ function UpdatePlatformFeeButton({ menuId, currentFee = 0, queryKey }) {
 
   const handleSubmit = async () => {
     try {
-      const { data } = await api.put(`/zone/menu/update-platform-fee`, {
+      const { data } = await api.put("/zone/menu/update-platform-fee", {
         menuId,
         platformFee: Number(platformFee || 0),
       });
@@ -189,6 +213,77 @@ function UpdatePlatformFeeButton({ menuId, currentFee = 0, queryKey }) {
   );
 }
 
+function ApprovalToggle({ menuId, checked, queryKey }) {
+  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+
+  const handleChange = async (nextChecked) => {
+    try {
+      setLoading(true);
+
+      const { data } = await api.put("/zone/approve-menu", {
+        menuId,
+        isApproved: nextChecked,
+      });
+
+      if (data?.success) {
+        message.success(data?.message || "Approval updated successfully");
+        queryClient.invalidateQueries({ queryKey });
+      } else {
+        message.error(data?.message || "Failed to update approval");
+      }
+    } catch (error) {
+      message.error(error?.response?.data?.message || "Failed to update approval");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Checkbox
+      checked={checked}
+      onChange={(e) => handleChange(e.target.checked)}
+      disabled={loading}
+    />
+  );
+}
+
+function PopularToggle({ menuId, checked, queryKey }) {
+  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+
+  const handleChange = async (nextChecked) => {
+    try {
+      setLoading(true);
+
+      const { data } = await api.put(
+        `/menu/update/popular?menuId=${menuId}&status=${nextChecked}`
+      );
+
+      if (data?.success) {
+        message.success(data?.message || "Popular status updated successfully");
+        queryClient.invalidateQueries({ queryKey });
+      } else {
+        message.error(data?.message || "Failed to update popular status");
+      }
+    } catch (error) {
+      message.error(
+        error?.response?.data?.message || "Failed to update popular status"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Checkbox
+      checked={checked}
+      onChange={(e) => handleChange(e.target.checked)}
+      disabled={loading}
+    />
+  );
+}
+
 async function fetchAllRestaurants(zoneId) {
   const limit = 100;
   const maxPages = 20;
@@ -221,8 +316,11 @@ async function fetchAllMenusByZone(zoneId) {
 
   for (let i = 0; i < restaurantIds.length; i += chunkSize) {
     const chunk = restaurantIds.slice(i, i + chunkSize);
+
     const results = await Promise.allSettled(
-      chunk.map((restaurantId) => api.get(`/zone/restaurant/menu-list/${restaurantId}`)),
+      chunk.map((restaurantId) =>
+        api.get(`/zone/restaurant/menu-list/${restaurantId}`)
+      )
     );
 
     results.forEach((result, index) => {
@@ -307,10 +405,11 @@ function AllMenus() {
     return {
       total: filteredData.length,
       inStock: filteredData.filter(
-        (item) => String(statusDrafts[item._id] || item.status).toLowerCase() === "in stock",
+        (item) =>
+          String(statusDrafts[item._id] || item.status).toLowerCase() === "in stock"
       ).length,
-      approved: filteredData.filter((item) => !!item.isApproved).length,
-      popular: filteredData.filter((item) => !!item.isPopular).length,
+      approved: filteredData.filter((item) => !!item.isApprovedBool).length,
+      popular: filteredData.filter((item) => !!item.isPopularBool).length,
     };
   }, [filteredData, statusDrafts]);
 
@@ -370,7 +469,9 @@ function AllMenus() {
       dataIndex: "status",
       key: "status",
       width: 120,
-      render: (value, record) => <StatusTag status={statusDrafts[record._id] || value} />,
+      render: (value, record) => (
+        <StatusTag status={statusDrafts[record._id] || value} />
+      ),
     },
     {
       title: "Title",
@@ -389,38 +490,58 @@ function AllMenus() {
     },
     {
       title: "Based Price",
-      dataIndex: "basedPrice",
-      key: "basedPrice",
+      dataIndex: "basedPriceValue",
+      key: "basedPriceValue",
       width: 120,
-      render: (value) => <Text strong className="text-green-600">{formatMoney(value)}</Text>,
+      render: (value) => (
+        <Text strong className="text-green-600">
+          {formatMoney(value)}
+        </Text>
+      ),
     },
     {
-      title: "PlateformFee",
-      dataIndex: "plateformFee",
-      key: "plateformFee",
+      title: "Platform Fee",
+      dataIndex: "plateformFeeValue",
+      key: "plateformFeeValue",
       width: 120,
-      render: (value) => <Text strong className="text-slate-600">{formatMoney(value)}</Text>,
+      render: (value) => (
+        <Text strong className="text-slate-600">
+          {formatMoney(value)}
+        </Text>
+      ),
     },
     {
-      title: "BasedPrice + plateformFee",
-      dataIndex: "totalPrice",
-      key: "totalPrice",
-      width: 170,
-      render: (value) => <Text strong className="text-blue-600">{formatMoney(value)}</Text>,
+      title: "Selling Price",
+      dataIndex: "sellingPrice",
+      key: "sellingPrice",
+      width: 150,
+      render: (value) => (
+        <Text strong className="text-blue-600">
+          {formatMoney(value)}
+        </Text>
+      ),
     },
     {
       title: "Discount",
-      dataIndex: "discountRate",
-      key: "discountRate",
+      dataIndex: "discountRateValue",
+      key: "discountRateValue",
       width: 100,
-      render: (value) => <Text strong className="text-orange-500">{Number(value || 0)}%</Text>,
+      render: (value) => (
+        <Text strong className="text-orange-500">
+          {Number(value || 0)}%
+        </Text>
+      ),
     },
     {
       title: "Offer Price",
-      dataIndex: "offerPrice",
-      key: "offerPrice",
+      dataIndex: "calculatedOfferPrice",
+      key: "calculatedOfferPrice",
       width: 120,
-      render: (value) => <Text strong className="text-red-500">{formatMoney(value)}</Text>,
+      render: (value) => (
+        <Text strong className="text-red-500">
+          {formatMoney(value)}
+        </Text>
+      ),
     },
     {
       title: "Change status",
@@ -452,36 +573,46 @@ function AllMenus() {
       render: (_, record) => (
         <UpdateDiscountButton
           menuId={record._id}
-          currentDiscountRate={record.discountRate}
+          currentDiscountRate={record.discountRateValue}
           queryKey={queryKey}
         />
       ),
     },
     {
-      title: "Update plateformFee",
+      title: "Update Fee",
       key: "updateFee",
-      width: 160,
+      width: 140,
       render: (_, record) => (
         <UpdatePlatformFeeButton
           menuId={record._id}
-          currentFee={record.plateformFee}
+          currentFee={record.plateformFeeValue}
           queryKey={queryKey}
         />
       ),
     },
     {
       title: "Admin Approval",
-      dataIndex: "isApproved",
       key: "isApproved",
-      width: 130,
-      render: (value) => <Checkbox checked={!!value} disabled />,
+      width: 140,
+      render: (_, record) => (
+        <ApprovalToggle
+          menuId={record._id}
+          checked={record.isApprovedBool}
+          queryKey={queryKey}
+        />
+      ),
     },
     {
       title: "Popular",
-      dataIndex: "isPopular",
       key: "isPopular",
       width: 100,
-      render: (value) => <Checkbox checked={!!value} disabled />,
+      render: (_, record) => (
+        <PopularToggle
+          menuId={record._id}
+          checked={record.isPopularBool}
+          queryKey={queryKey}
+        />
+      ),
     },
   ];
 
@@ -521,10 +652,30 @@ function AllMenus() {
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <StatsCard icon={Layers3} label="Total Menus" value={stats.total} hint="Filtered result count" />
-            <StatsCard icon={CheckCircle2} label="In Stock" value={stats.inStock} hint="Available menu items" />
-            <StatsCard icon={ShieldCheck} label="Approved" value={stats.approved} hint="Admin approved items" />
-            <StatsCard icon={TagIcon} label="Popular" value={stats.popular} hint="Popular tagged items" />
+            <StatsCard
+              icon={Layers3}
+              label="Total Menus"
+              value={stats.total}
+              hint="Filtered result count"
+            />
+            <StatsCard
+              icon={CheckCircle2}
+              label="In Stock"
+              value={stats.inStock}
+              hint="Available menu items"
+            />
+            <StatsCard
+              icon={ShieldCheck}
+              label="Approved"
+              value={stats.approved}
+              hint="Admin approved items"
+            />
+            <StatsCard
+              icon={Flame}
+              label="Popular"
+              value={stats.popular}
+              hint="Popular tagged items"
+            />
           </div>
 
           <div className="mt-5 grid gap-3 lg:grid-cols-5">
@@ -545,7 +696,10 @@ function AllMenus() {
               onChange={setCategoryFilter}
               options={[
                 { label: "Filter category", value: "all" },
-                ...categoryOptions.map((item) => ({ label: item, value: item })),
+                ...categoryOptions.map((item) => ({
+                  label: item,
+                  value: item,
+                })),
               ]}
               size="large"
             />
