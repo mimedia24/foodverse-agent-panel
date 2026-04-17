@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Table,
   Tag,
@@ -8,8 +8,8 @@ import {
   Row,
   Col,
   Button,
-  Space,
   Tooltip,
+  message,
 } from "antd";
 import {
   SearchOutlined,
@@ -26,12 +26,13 @@ import {
 } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import Layout from "../components/layout/Layout";
-import api from "../api/config";
 import { useAuth } from "../context/authContext";
 import AssignRider from "../components/orders/AssignRider";
 import ItemsCard from "../components/orders/ItemsCard";
 import DeleteOrder from "../components/orders/DeleteOrder";
 import UpdateOrderStatus from "../components/orders/UpdateOrderStatus";
+import OrderService from "../api/order.service";
+import OrderTimeline from "../components/orders/OrderTimeline";
 
 const { Title, Text } = Typography;
 
@@ -62,89 +63,119 @@ const StatusBadge = ({ status }) => {
 function Order() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
-  const [errors, setErrors] = useState(null);
-
-  const currentPage = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "20");
-  const userIdSearch = searchParams.get("userId");
-
   const queryClient = useQueryClient();
 
+  const [errors, setErrors] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [phoneInput, setPhoneInput] = useState("");
+  const [riderInput, setRiderInput] = useState("");
+  const [userInput, setUserInput] = useState(searchParams.get("userId") || "");
+
+  const currentPage = parseInt(searchParams.get("page") || "1", 10);
+  const limit = parseInt(searchParams.get("limit") || "20", 10);
+  const userIdSearch = searchParams.get("userId");
+
+  const queryKey = useMemo(
+    () => ["orders", currentPage, limit, user?.zoneId, userIdSearch || ""],
+    [currentPage, limit, user?.zoneId, userIdSearch]
+  );
+
   const { data, isLoading, isPlaceholderData, refetch } = useQuery({
-    queryKey: [
-      "orders",
-      currentPage,
-      limit,
-      user?.zoneId,
-      searchParams.toString(),
-    ],
+    queryKey,
     queryFn: async () => {
-      let url = userIdSearch
-        ? `/zone/orders/user/${userIdSearch}?page=${currentPage}&limit=${limit}`
-        : `/zone/order-list?page=${currentPage}&limit=${limit}`;
+      if (!user?.zoneId) {
+        return {
+          success: false,
+          data: [],
+          totalCount: 0,
+        };
+      }
 
-      const method = userIdSearch ? "GET" : "POST";
-      const payload = userIdSearch ? null : { zoneId: user?.zoneId };
+      if (userIdSearch) {
+        return await OrderService.getOrdersByUserId(
+          userIdSearch,
+          currentPage,
+          limit
+        );
+      }
 
-      const response =
-        method === "GET" ? await api.get(url) : await api.post(url, payload);
-
-      return response.data;
+      return await OrderService.getOrderList(currentPage, limit, user.zoneId);
     },
     placeholderData: keepPreviousData,
     enabled: !!user?.zoneId,
   });
 
-  const handleSearchByPhoneNumber = async (phoneNumber) => {
-    if (phoneNumber.length !== 11) {
+  const handleResetList = async () => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete("userId");
+    newParams.set("page", "1");
+    newParams.set("limit", String(limit));
+    setSearchParams(newParams);
+    setErrors(null);
+    setPhoneInput("");
+    setRiderInput("");
+    setUserInput("");
+    await refetch();
+  };
+
+  const handleSearchByPhoneNumber = async () => {
+    if (!phoneInput) {
+      return handleResetList();
+    }
+
+    if (phoneInput.length !== 11) {
       setErrors((prev) => ({ ...prev, phoneError: "Invalid phone number" }));
       return;
-    } else {
-      setErrors(null);
     }
 
+    setErrors(null);
+    setSearchLoading(true);
+
     try {
-      const { data } = await api.get(`/zone/order/phone-number/${phoneNumber}`);
-      if (data.success) {
-        queryClient.setQueriesData(["orders"], () => ({
-          data: data.result,
-        }));
-      } else {
-        queryClient.setQueriesData(["orders"], () => []);
+      const result = await OrderService.getOrdersByPhoneNumber(phoneInput);
+      queryClient.setQueryData(queryKey, result);
+
+      if (!result?.data?.length) {
+        message.info("No order found for this phone number");
       }
     } catch (error) {
-      return null;
+      message.error("Failed to search by phone number");
+    } finally {
+      setSearchLoading(false);
     }
   };
 
-  const handleSearchByRiderId = async (riderId) => {
+  const handleSearchByRiderId = async () => {
+    if (!riderInput) {
+      return handleResetList();
+    }
+
+    setSearchLoading(true);
+
     try {
-      const { data } = await api.get(`/zone/order/rider/${riderId}`);
-      if (data.success) {
-        queryClient.setQueriesData(["orders"], () => ({
-          data: data.result,
-        }));
-      } else {
-        queryClient.setQueriesData(["orders"], () => []);
+      const result = await OrderService.getOrdersByRiderId(riderInput);
+      queryClient.setQueryData(queryKey, result);
+
+      if (!result?.data?.length) {
+        message.info("No order found for this rider");
       }
     } catch (error) {
-      return null;
+      message.error("Failed to search by rider id");
+    } finally {
+      setSearchLoading(false);
     }
   };
 
-  const handleSearchByUserId = async (userId) => {
-    try {
-      const { data } = await api.get(`/zone/order/user/${userId}`);
-      if (data.success) {
-        queryClient.setQueriesData(["orders"], () => ({
-          data: data.result,
-        }));
-      } else {
-        queryClient.setQueriesData(["orders"], () => []);
-      }
-    } catch (error) {
-      return null;
+  const handleSearchByUserId = async () => {
+    if (!userInput) {
+      return handleResetList();
     }
+
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set("userId", userInput);
+    newParams.set("page", "1");
+    newParams.set("limit", String(limit));
+    setSearchParams(newParams);
   };
 
   const columns = [
@@ -157,9 +188,9 @@ function Order() {
       render: (id) => (
         <Text
           copyable={{ text: id, icon: [<CopyOutlined key="copy" />] }}
-          className=" text-indigo-600 text-[11px]"
+          className="text-indigo-600 text-[11px]"
         >
-          #{id.slice(-6).toUpperCase()}
+          #{id?.slice(-6)?.toUpperCase()}
         </Text>
       ),
     },
@@ -207,7 +238,7 @@ function Order() {
       render: (id) =>
         id ? (
           <Text copyable={{ text: id }} className="text-[11px] text-slate-500">
-            #{id.slice(-6)}
+            #{id?.slice(-6)}
           </Text>
         ) : (
           <Text type="secondary" className="text-[11px]">
@@ -219,7 +250,7 @@ function Order() {
       title: "STATUS",
       dataIndex: "status",
       key: "status",
-      width: 80,
+      width: 90,
       render: (status) => <StatusBadge status={status} />,
     },
     {
@@ -300,10 +331,10 @@ function Order() {
         <div className="rounded-xl bg-slate-50 px-2 py-2 border border-slate-100 leading-tight">
           <div className="text-[9px] uppercase text-slate-400">Total</div>
           <div className="text-[14px] font-bold text-emerald-600">
-            TK {record.totalAmount?.toFixed(0)}
+            TK {Number(record.totalAmount || 0).toFixed(0)}
           </div>
           <div className="text-[12px] text-blue-500 mt-1">
-            Fee {record.riderFee?.toFixed(0)}
+            Fee {Number(record.riderFee || 0).toFixed(0)}
           </div>
         </div>
       ),
@@ -315,7 +346,7 @@ function Order() {
       render: (_, record) => (
         <div className="flex justify-center">
           <span className="rounded-lg bg-lime-100 px-2 py-1 text-[10px] font-semibold text-lime-700">
-            {record.platform}
+            {record.platform || "N/A"}
           </span>
         </div>
       ),
@@ -327,15 +358,20 @@ function Order() {
       render: (_, record) => (
         <div className="text-center leading-tight">
           <div className="text-[11px] font-bold text-slate-700">
-            {record.distance?.toFixed(2)} KM
+            {Number(record.distance || 0).toFixed(2)} KM
           </div>
           <Button
             size="small"
             type="link"
             icon={<EnvironmentOutlined />}
-            href={`https://www.google.com/maps?q=${record.coords?.lat},${record.coords?.long}`}
+            href={
+              record?.coords?.lat && record?.coords?.long
+                ? `https://www.google.com/maps?q=${record.coords.lat},${record.coords.long}`
+                : undefined
+            }
             target="_blank"
             className="p-0 h-auto text-[10px]"
+            disabled={!record?.coords?.lat || !record?.coords?.long}
           >
             View
           </Button>
@@ -346,12 +382,16 @@ function Order() {
       title: "ACTIONS",
       key: "actions",
       fixed: "right",
-      width: 150,
+      width: 170,
       render: (_, record) => (
         <div className="flex items-center gap-1.5">
           <AssignRider orderId={record._id} />
           <DeleteOrder orderId={record._id} />
-          <UpdateOrderStatus currentStatus={record.status} />
+          <UpdateOrderStatus
+            orderId={record._id}
+            currentStatus={record.status}
+          />
+          <OrderTimeline orderId={record._id} />
         </div>
       ),
     },
@@ -367,7 +407,7 @@ function Order() {
                 Order Dashboard
               </Title>
               <Text type="secondary" className="text-[12px]">
-                Managing Zone ID : {user?.zoneId}
+                Managing Zone ID : {user?.zoneId || "N/A"}
               </Text>
             </Col>
 
@@ -375,8 +415,9 @@ function Order() {
               <Button
                 type="primary"
                 icon={<ReloadOutlined />}
-                onClick={() => refetch()}
+                onClick={handleResetList}
                 className="rounded-xl h-9 px-4"
+                loading={isLoading || searchLoading}
               >
                 Refresh
               </Button>
@@ -386,8 +427,9 @@ function Order() {
               <Input
                 placeholder="User ID..."
                 prefix={<SearchOutlined />}
-                defaultValue={searchParams.get("userId")}
-                onPressEnter={(e) => handleSearchByUserId(e.target.value)}
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                onPressEnter={handleSearchByUserId}
                 allowClear
                 className="rounded-xl h-9"
               />
@@ -397,7 +439,9 @@ function Order() {
               <Input
                 placeholder="Rider ID..."
                 prefix={<SearchOutlined />}
-                onChange={(e) => handleSearchByRiderId(e.target.value)}
+                value={riderInput}
+                onChange={(e) => setRiderInput(e.target.value)}
+                onPressEnter={handleSearchByRiderId}
                 allowClear
                 className="rounded-xl h-9"
               />
@@ -407,7 +451,9 @@ function Order() {
               <Input
                 placeholder="Phone..."
                 prefix={<SearchOutlined />}
-                onChange={(e) => handleSearchByPhoneNumber(e.target.value)}
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value)}
+                onPressEnter={handleSearchByPhoneNumber}
                 allowClear
                 className="rounded-xl h-9"
               />
@@ -425,14 +471,19 @@ function Order() {
             columns={columns}
             dataSource={data?.data || []}
             rowKey="_id"
-            loading={isLoading}
+            loading={isLoading || searchLoading}
             scroll={{ x: 1380 }}
             size="small"
             style={{ opacity: isPlaceholderData ? 0.7 : 1 }}
             onChange={(pagination) => {
               const newParams = new URLSearchParams(searchParams);
-              newParams.set("page", pagination.current.toString());
-              newParams.set("limit", pagination.pageSize.toString());
+              newParams.set("page", String(pagination.current || 1));
+              newParams.set("limit", String(pagination.pageSize || 20));
+
+              if (userIdSearch) {
+                newParams.set("userId", userIdSearch);
+              }
+
               setSearchParams(newParams);
             }}
             pagination={{

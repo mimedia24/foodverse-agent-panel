@@ -100,29 +100,51 @@ function parseRawDate(value) {
 
   if (dayjs.isDayjs(value) && value.isValid()) return value;
 
-  if (typeof value === "string") {
-    const formats = [
-      "DD/MM/YY",
-      "DD/MM/YYYY",
-      "MM/DD/YY",
-      "MM/DD/YYYY",
-      "YYYY-MM-DD",
-      "YYYY-MM-DDTHH:mm:ss",
-      "YYYY-MM-DDTHH:mm:ssZ",
-      "YYYY-MM-DD HH:mm:ss",
-      "ddd MMM DD YYYY HH:mm:ss [GMT]ZZ",
-    ];
-
-    for (const format of formats) {
-      const parsed = dayjs(value, format, true);
-      if (parsed.isValid()) return parsed;
-    }
+  if (typeof value === "number") {
+    const parsed = dayjs(value);
+    return parsed.isValid() ? parsed : null;
   }
 
-  const direct = dayjs(value);
-  if (direct.isValid()) return direct;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
 
-  return null;
+    const formats = [
+  "D/M/YY",
+  "D/M/YYYY",
+  "DD/MM/YY",
+  "DD/MM/YYYY",
+  "M/D/YY",
+  "M/D/YYYY",
+  "MM/DD/YY",
+  "MM/DD/YYYY",
+  "YYYY-MM-DD",
+  "YYYY-M-D",
+  "YYYY-MM-DD HH:mm:ss",
+  "YYYY-M-D HH:mm:ss",
+  "YYYY-MM-DDTHH:mm:ss",
+  "YYYY-MM-DDTHH:mm:ssZ",
+  "ddd MMM DD YYYY HH:mm:ss [GMT]ZZ",
+  "ddd MMM DD YYYY HH:mm:ss",
+  "MMM DD YYYY hh:mm A",
+  "DD MMM YYYY hh:mm A",
+];
+
+    for (const format of formats) {
+      const strictParsed = dayjs(trimmed, format, true);
+      if (strictParsed.isValid()) return strictParsed;
+    }
+
+    for (const format of formats) {
+      const looseParsed = dayjs(trimmed, format);
+      if (looseParsed.isValid()) return looseParsed;
+    }
+
+    const directParsed = dayjs(trimmed);
+    if (directParsed.isValid()) return directParsed;
+  }
+
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed : null;
 }
 
 function getOrderDate(order) {
@@ -193,7 +215,7 @@ function loadGoogleMapsScript(apiKey) {
     if (existingScript) {
       existingScript.addEventListener("load", () => resolve(window.google.maps));
       existingScript.addEventListener("error", () =>
-        reject(new Error("Google Maps failed to load")),
+        reject(new Error("Google Maps failed to load"))
       );
       return;
     }
@@ -238,8 +260,14 @@ async function fetchAllOrders(zoneId) {
   }
 
   const uniqueOrders = Array.from(
-    new Map(allOrders.map((item) => [item._id, item])).values(),
+    new Map(allOrders.map((item) => [item._id, item])).values()
   );
+
+  uniqueOrders.sort((a, b) => {
+    const dateA = getOrderDate(a)?.valueOf() || 0;
+    const dateB = getOrderDate(b)?.valueOf() || 0;
+    return dateB - dateA;
+  });
 
   return uniqueOrders;
 }
@@ -294,7 +322,7 @@ function OrderDetailsModal({ order, onClose }) {
               </p>
               <span
                 className={`inline-flex rounded-md border px-2.5 py-1 text-xs font-bold uppercase ${getStatusBadgeClass(
-                  order.status,
+                  order.status
                 )}`}
               >
                 {getStatusConfig(order.status).label}
@@ -345,15 +373,17 @@ function OrderMap() {
   const [mapsReady, setMapsReady] = useState(false);
   const [mapError, setMapError] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedDate, setSelectedDate] = useState(dayjs().format("YYYY-MM-DD"));
 
   const { data: apiOrders = [], isFetching, refetch } = useQuery({
     queryKey: ["order-map-orders", zoneId],
     queryFn: () => fetchAllOrders(zoneId),
     enabled: !!zoneId,
-    staleTime: 60 * 1000,
+    staleTime: 0,
     refetchOnMount: "always",
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   });
 
   useEffect(() => {
@@ -407,15 +437,38 @@ function OrderMap() {
     return () => clearTimeout(timer);
   }, [mapsReady]);
 
-  const filteredOrders = useMemo(() => {
-    if (!selectedDate) return apiOrders;
+const filteredOrders = useMemo(() => {
+  let rows = [...apiOrders];
 
-    return apiOrders.filter((order) => {
+  console.log("selectedDate:", selectedDate);
+  console.log(
+    "order dates sample:",
+    apiOrders.slice(0, 10).map((order) => ({
+      id: order._id,
+      orderDate: order.orderDate,
+      createdAt: order.createdAt,
+      parsed: getOrderDate(order)?.format("YYYY-MM-DD HH:mm:ss") || null,
+      compareDate: getOrderDate(order)?.format("YYYY-MM-DD") || null,
+      coords: order.coords,
+    }))
+  );
+
+  if (selectedDate) {
+    rows = rows.filter((order) => {
       const parsedDate = getOrderDate(order);
       if (!parsedDate) return false;
       return parsedDate.format("YYYY-MM-DD") === selectedDate;
     });
-  }, [apiOrders, selectedDate]);
+  }
+
+  rows.sort((a, b) => {
+    const dateA = getOrderDate(a)?.valueOf() || 0;
+    const dateB = getOrderDate(b)?.valueOf() || 0;
+    return dateB - dateA;
+  });
+
+  return rows;
+}, [apiOrders, selectedDate]);
 
   const ordersWithCoords = useMemo(() => {
     return filteredOrders
@@ -488,7 +541,7 @@ function OrderMap() {
         window.google.maps.event.trigger(map, "resize");
         drawMarkers();
       }
-    }, 250);
+    }, 200);
 
     return () => {
       clearTimeout(timer);
@@ -508,6 +561,11 @@ function OrderMap() {
       STATUS_CONFIG.cancelled,
     ];
   }, []);
+
+  const handleRefresh = async () => {
+    setSelectedOrder(null);
+    await refetch();
+  };
 
   return (
     <Layout>
@@ -533,12 +591,17 @@ function OrderMap() {
                   <p className="mt-1 text-sm text-slate-500">
                     Live order locations from your real order list.
                   </p>
+                  <p className="mt-2 text-xs font-medium text-slate-400">
+                    Showing {ordersWithCoords.length} mapped order{ordersWithCoords.length !== 1 ? "s" : ""}
+                    {selectedDate ? ` for ${dayjs(selectedDate).format("DD MMM YYYY")}` : ""}
+                  </p>
                 </div>
 
-                <div className="w-full md:w-[220px]">
+                <div className="w-full md:w-[260px]">
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                     Filter by Date
                   </label>
+
                   <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
                     <CalendarDays size={16} className="text-slate-400" />
                     <input
@@ -547,6 +610,22 @@ function OrderMap() {
                       onChange={(e) => setSelectedDate(e.target.value)}
                       className="w-full bg-transparent text-sm text-slate-700 outline-none"
                     />
+                  </div>
+
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => setSelectedDate(dayjs().format("YYYY-MM-DD"))}
+                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                    >
+                      Today
+                    </button>
+
+                    <button
+                      onClick={() => setSelectedDate("")}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      All Dates
+                    </button>
                   </div>
                 </div>
               </div>
@@ -568,7 +647,7 @@ function OrderMap() {
             </div>
 
             <button
-              onClick={() => refetch()}
+              onClick={handleRefresh}
               className="pointer-events-auto inline-flex items-center gap-2 self-start rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-slate-800"
             >
               <RefreshCcw size={16} className={isFetching ? "animate-spin" : ""} />
@@ -580,7 +659,7 @@ function OrderMap() {
         {!ordersWithCoords.length ? (
           <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center px-4">
             <div className="pointer-events-auto rounded-2xl border border-white/60 bg-white/95 px-4 py-3 text-sm text-slate-600 shadow-lg backdrop-blur">
-              No mapped orders found for the selected date.
+              No mapped orders found{selectedDate ? ` for ${dayjs(selectedDate).format("DD MMM YYYY")}` : ""}.
             </div>
           </div>
         ) : null}

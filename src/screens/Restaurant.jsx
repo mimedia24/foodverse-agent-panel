@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
 import { useAuth } from "../context/authContext";
@@ -18,22 +18,6 @@ import {
 } from "lucide-react";
 import { Button, Input, Modal, Select, Switch, message } from "antd";
 
-const WALLET_ACTIONS_KEY = "foodverse_restaurant_wallet_actions";
-const GLOBAL_CLOSE_KEY = "foodverse_restaurant_force_closed";
-
-const readJson = (key, fallback) => {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
-};
-
-const writeJson = (key, value) => {
-  localStorage.setItem(key, JSON.stringify(value));
-};
-
 const num = (value) => {
   const n = Number(value || 0);
   return Number.isFinite(n) ? n : 0;
@@ -51,20 +35,23 @@ const getRestaurantBaseBalance = (restaurant) => {
       restaurant?.walletBalance ??
       restaurant?.wallet ??
       restaurant?.amount ??
-      0,
+      0
   );
 };
 
 function Restaurant() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+
   const [page, setPage] = useState(1);
-  const [walletActions, setWalletActions] = useState([]);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const [operator, setOperator] = useState("-");
   const [selectedRestaurantId, setSelectedRestaurantId] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [forceCloseAll, setForceCloseAll] = useState(false);
+  const [walletLoading, setWalletLoading] = useState(false);
+
   const limit = 6;
 
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -82,42 +69,24 @@ function Restaurant() {
     refetchOnWindowFocus: false,
   });
 
-  useEffect(() => {
-    setWalletActions(readJson(WALLET_ACTIONS_KEY, []));
-    setForceCloseAll(readJson(GLOBAL_CLOSE_KEY, false));
-  }, []);
-
   const restaurantsRaw = data?.result || [];
 
   const restaurants = useMemo(() => {
-    return restaurantsRaw.map((restaurant) => {
-      const walletDiff = walletActions
-        .filter((item) => item.restaurantId === restaurant._id)
-        .reduce((sum, item) => {
-          return item.operator === "+" ? sum + num(item.amount) : sum - num(item.amount);
-        }, 0);
-
-      const finalBalance = getRestaurantBaseBalance(restaurant) + walletDiff;
-
-      return {
-        ...restaurant,
-        balance: finalBalance,
-        walletBalance: finalBalance,
-      };
-    });
-  }, [restaurantsRaw, walletActions]);
+    return restaurantsRaw.map((restaurant) => ({
+      ...restaurant,
+      balance: getRestaurantBaseBalance(restaurant),
+      walletBalance: getRestaurantBaseBalance(restaurant),
+    }));
+  }, [restaurantsRaw]);
 
   const sortedRestaurantOptions = useMemo(() => {
     return [...restaurants]
-      .sort((a, b) => {
-        const aZero = num(a.balance) <= 0 ? 1 : 0;
-        const bZero = num(b.balance) <= 0 ? 1 : 0;
-        if (aZero !== bZero) return aZero - bZero;
-        return num(b.balance) - num(a.balance);
-      })
+      .sort((a, b) => num(b.balance) - num(a.balance))
       .map((item) => ({
         value: item._id,
-        label: `${item.restaurantName || item.name || "Restaurant"} — ${money(item.balance)}`,
+        label: `${item.restaurantName || item.name || "Restaurant"} — ${money(
+          item.balance
+        )}`,
       }));
   }, [restaurants]);
 
@@ -141,16 +110,10 @@ function Restaurant() {
     const total = restaurants.reduce(
       (sum, item) =>
         sum + num(item?.rating ?? item?.avgRating ?? item?.averageRating ?? 5),
-      0,
+      0
     );
     return (total / restaurants.length).toFixed(1);
   }, [restaurants]);
-
-  const recentActions = useMemo(() => {
-    return [...walletActions]
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-      .slice(0, 4);
-  }, [walletActions]);
 
   const openWalletModal = (restaurantId = "") => {
     setOperator("-");
@@ -166,7 +129,7 @@ function Restaurant() {
     setOperator("-");
   };
 
-  const handleWalletSubmit = () => {
+  const handleWalletSubmit = async () => {
     if (!selectedRestaurantId) {
       message.error("Please select a restaurant");
       return;
@@ -177,36 +140,43 @@ function Restaurant() {
       return;
     }
 
-    const restaurant = restaurants.find((item) => item._id === selectedRestaurantId);
+    if (operator === "+") {
+      message.warning("Plus balance backend is not connected yet.");
+      return;
+    }
 
-    const nextAction = {
-      id: String(Date.now()),
-      restaurantId: selectedRestaurantId,
-      restaurantName:
-        restaurant?.restaurantName || restaurant?.name || "Restaurant",
-      operator,
-      amount: num(amount),
-      note: note || (operator === "+" ? "Balance add" : "Balance subtract"),
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      setWalletLoading(true);
 
-    const next = [nextAction, ...walletActions];
-    setWalletActions(next);
-    writeJson(WALLET_ACTIONS_KEY, next);
+      const { data } = await api.put("/zone/restaurant-payment", {
+        amount: num(amount),
+        restaurantId: selectedRestaurantId,
+        note,
+      });
 
-    message.success(
-      operator === "+" ? "Restaurant balance added" : "Restaurant balance subtracted",
-    );
-    closeWalletModal();
+      if (data?.success) {
+        message.success(data?.message || "Restaurant payment successful");
+        closeWalletModal();
+        queryClient.invalidateQueries({ queryKey: ["restaurants"] });
+        refetch();
+      } else {
+        message.error(data?.message || "Payment failed");
+      }
+    } catch (error) {
+      message.error(
+        error?.response?.data?.message || "Restaurant payment failed"
+      );
+    } finally {
+      setWalletLoading(false);
+    }
   };
 
   const toggleForceCloseAll = (checked) => {
     setForceCloseAll(checked);
-    writeJson(GLOBAL_CLOSE_KEY, checked);
     message.success(
       checked
         ? "All restaurants are now force closed"
-        : "All restaurants returned to normal status",
+        : "All restaurants returned to normal status"
     );
   };
 
@@ -238,7 +208,7 @@ function Restaurant() {
     {
       icon: <BadgeDollarSign size={20} />,
       title: "Balance Action",
-      value: "Add / Minus",
+      value: "Minus Live",
       subtitle: "Adjust restaurant money",
       iconWrap: "bg-rose-100 text-rose-600",
       action: true,
@@ -299,7 +269,9 @@ function Restaurant() {
               <button
                 key={item.title}
                 onClick={item.action ? () => openWalletModal() : undefined}
-                className={`${statCardClass} text-left ${item.action ? "cursor-pointer" : "cursor-default"}`}
+                className={`${statCardClass} text-left ${
+                  item.action ? "cursor-pointer" : "cursor-default"
+                }`}
               >
                 <div
                   className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl ${item.iconWrap}`}
@@ -317,69 +289,6 @@ function Restaurant() {
                 </p>
               </button>
             ))}
-          </div>
-
-          <div className="mt-5 rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-black text-slate-950 md:text-xl">
-                  Recent Balance Actions
-                </h2>
-                <p className="mt-1 text-xs text-slate-500 md:text-sm">
-                  Latest add and subtract activity
-                </p>
-              </div>
-
-              <Button
-                onClick={() => openWalletModal()}
-                className="!h-10 !rounded-2xl !border-0 !bg-gradient-to-r !from-slate-950 !to-slate-800 !px-4 !font-semibold !text-white hover:!text-white"
-              >
-                Adjust Balance
-              </Button>
-            </div>
-
-            {recentActions.length ? (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {recentActions.map((action) => (
-                  <div
-                    key={action.id}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[10px] font-bold md:text-xs ${
-                          action.operator === "+"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {action.operator === "+" ? "ADD" : "SUBTRACT"}
-                      </span>
-                      <span className="text-[10px] text-slate-400 md:text-xs">
-                        {new Date(action.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-
-                    <h4 className="mt-3 line-clamp-1 text-sm font-bold text-slate-900 md:text-base">
-                      {action.restaurantName}
-                    </h4>
-
-                    <p className="mt-1 text-sm font-black text-slate-950 md:text-lg">
-                      {action.operator === "+" ? "+" : "-"}
-                      {money(action.amount)}
-                    </p>
-
-                    <p className="mt-2 line-clamp-1 text-xs text-slate-500 md:text-sm">
-                      {action.note}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                No balance actions yet.
-              </div>
-            )}
           </div>
 
           <div className="mt-6">
@@ -457,7 +366,7 @@ function Restaurant() {
                 Adjust Restaurant Balance
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Minus or plus restaurant balance from one panel.
+                Minus is connected to backend. Plus needs backend endpoint.
               </p>
             </div>
 
@@ -482,7 +391,10 @@ function Restaurant() {
             </button>
 
             <button
-              onClick={() => setOperator("+")}
+              onClick={() => {
+                setOperator("+");
+                message.info("Plus balance backend is not connected yet.");
+              }}
               className={`rounded-2xl border px-4 py-3 text-sm font-bold transition ${
                 operator === "+"
                   ? "border-emerald-200 bg-emerald-500 text-white"
@@ -574,18 +486,19 @@ function Restaurant() {
 
             <Button
               onClick={handleWalletSubmit}
+              loading={walletLoading}
               className={`!h-12 !rounded-2xl !border-0 !font-semibold !text-white hover:!text-white ${
                 operator === "+"
                   ? "!bg-gradient-to-r !from-emerald-500 !to-cyan-500"
                   : "!bg-gradient-to-r !from-rose-500 !to-orange-500"
               }`}
             >
-              {operator === "+" ? "Submit Plus" : "Submit Minus"}
+              {operator === "+" ? "Plus Not Connected" : "Submit Minus"}
             </Button>
           </div>
 
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
-            This balance update is currently stored in local browser storage. Later it can be connected to backend API.
+            Live backend action available: minus via restaurant payment API. Plus balance needs a separate backend endpoint.
           </div>
         </div>
       </Modal>

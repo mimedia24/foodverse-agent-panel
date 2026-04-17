@@ -1,19 +1,4 @@
-import axios from "axios";
-
-const dashboardBaseUrl =
-  import.meta.env.VITE_DASHBOARD_API_BASE_URL ||
-  "https://api.foodversedelivery.com/api";
-
-function getAuthHeaders() {
-  const token =
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("AccessToken");
-
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { AccessToken: token } : {}),
-  };
-}
+import api from "./config";
 
 function toNumber(value) {
   const num = Number(value);
@@ -51,51 +36,43 @@ function normalizeRevenueOverview(list = []) {
 }
 
 function normalizeStats(payload) {
-  const todayOrder =
-    toNumber(payload?.todayOrder) ||
-    toNumber(payload?.todayOrders) ||
-    toNumber(payload?.today?.totalOrders);
-
-  const totalOrder =
-    toNumber(payload?.totalOrder) ||
-    toNumber(payload?.totalOrders) ||
-    toNumber(payload?.ordersCount);
-
-  const totalRider =
-    toNumber(payload?.totalRider) ||
-    toNumber(payload?.totalRiders) ||
-    toNumber(payload?.ridersCount);
-
-  const totalRestaurant =
-    toNumber(payload?.totalRestaurant) ||
-    toNumber(payload?.totalRestaurants) ||
-    toNumber(payload?.restaurantsCount);
-
   return [
     {
       title: "Today Order",
-      value: todayOrder,
+      value:
+        toNumber(payload?.todayOrder) ||
+        toNumber(payload?.todayOrders) ||
+        toNumber(payload?.today?.totalOrders),
       sub: "Orders placed today",
       tone: "blue",
       icon: "orders",
     },
     {
       title: "Total Order",
-      value: totalOrder,
+      value:
+        toNumber(payload?.totalOrder) ||
+        toNumber(payload?.totalOrders) ||
+        toNumber(payload?.ordersCount),
       sub: "All-time orders",
       tone: "violet",
       icon: "package",
     },
     {
       title: "Total Rider",
-      value: totalRider,
+      value:
+        toNumber(payload?.totalRider) ||
+        toNumber(payload?.totalRiders) ||
+        toNumber(payload?.ridersCount),
       sub: "Registered riders",
       tone: "indigo",
       icon: "rider",
     },
     {
       title: "Total Restaurant",
-      value: totalRestaurant,
+      value:
+        toNumber(payload?.totalRestaurant) ||
+        toNumber(payload?.totalRestaurants) ||
+        toNumber(payload?.restaurantsCount),
       sub: "Active partner restaurants",
       tone: "amber",
       icon: "restaurant",
@@ -159,14 +136,7 @@ function normalizeSalesSummary(payload) {
 }
 
 export async function fetchDashboardData() {
-  const response = await axios.get(
-    `${dashboardBaseUrl}/admin/dashboard/information`,
-    {
-      headers: getAuthHeaders(),
-    }
-  );
-
-  console.log("AGENT DASHBOARD API RESPONSE:", response?.data);
+  const response = await api.get("/admin/dashboard/information");
 
   const payload = response?.data?.data || response?.data || {};
   const weekDaySales = Array.isArray(payload?.weekDaySales)
@@ -189,6 +159,5 @@ export async function fetchDashboardData() {
       payload?.topRiders || payload?.riders || []
     ),
     salesSummary: normalizeSalesSummary(payload),
-    raw: response?.data,
   };
 }
