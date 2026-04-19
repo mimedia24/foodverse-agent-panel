@@ -36,6 +36,44 @@ import OrderTimeline from "../components/orders/OrderTimeline";
 
 const { Title, Text } = Typography;
 
+const toNumber = (value) => {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const getItemsSellingTotal = (items = []) => {
+  return items.reduce((acc, item) => {
+    const unitPrice =
+      toNumber(item?.sellingPrice) > 0
+        ? toNumber(item?.sellingPrice)
+        : toNumber(item?.offerPrice);
+
+    return acc + unitPrice * toNumber(item?.quantity || 1);
+  }, 0);
+};
+
+const getAddonsTotal = (items = []) => {
+  return items.reduce((acc, item) => {
+    const addonTotal = (item?.addons || []).reduce((sum, addon) => {
+      return sum + toNumber(addon?.price) * toNumber(addon?.quantity || 1);
+    }, 0);
+
+    return acc + addonTotal;
+  }, 0);
+};
+
+const getUserDeliveryCharge = (record) => {
+  return toNumber(record?.deliveryAmount);
+};
+
+const getDisplayOrderTotal = (record) => {
+  const itemsTotal = getItemsSellingTotal(record?.items || []);
+  const addonsTotal = getAddonsTotal(record?.items || []);
+  const deliveryCharge = getUserDeliveryCharge(record);
+
+  return itemsTotal + addonsTotal + deliveryCharge;
+};
+
 const StatusBadge = ({ status }) => {
   const statusConfig = {
     pending: { color: "orange" },
@@ -323,34 +361,29 @@ function Order() {
         </div>
       ),
     },
-    {
-      title: "AMOUNT",
-      key: "price",
-      width: 90,
-      render: (_, record) => (
-        <div className="rounded-xl bg-slate-50 px-2 py-2 border border-slate-100 leading-tight">
-          <div className="text-[9px] uppercase text-slate-400">Total</div>
-          <div className="text-[14px] font-bold text-emerald-600">
-            TK {Number(record.totalAmount || 0).toFixed(0)}
-          </div>
-          <div className="text-[12px] text-blue-500 mt-1">
-            Fee {Number(record.riderFee || 0).toFixed(0)}
-          </div>
+{
+  title: "AMOUNT",
+  key: "price",
+  width: 120,
+  render: (_, record) => {
+    const itemsTotal = getItemsSellingTotal(record?.items || []);
+    const addonsTotal = getAddonsTotal(record?.items || []);
+    const deliveryCharge = getUserDeliveryCharge(record);
+    const finalTotal = getDisplayOrderTotal(record);
+
+    return (
+      <div className="rounded-xl bg-slate-50 px-2 py-2 border border-slate-100 leading-tight">
+        <div className="text-[9px] uppercase text-slate-400">Total</div>
+        <div className="text-[14px] font-bold text-emerald-600">
+          TK {finalTotal.toFixed(0)}
         </div>
-      ),
-    },
-    {
-      title: "PTFM",
-      key: "platform",
-      width: 80,
-      render: (_, record) => (
-        <div className="flex justify-center">
-          <span className="rounded-lg bg-lime-100 px-2 py-1 text-[10px] font-semibold text-lime-700">
-            {record.platform || "N/A"}
-          </span>
+        <div className="text-[10px] text-blue-500">
+          Delivery {deliveryCharge.toFixed(0)}
         </div>
-      ),
-    },
+      </div>
+    );
+  },
+},
     {
       title: "MAP",
       key: "logistics",
