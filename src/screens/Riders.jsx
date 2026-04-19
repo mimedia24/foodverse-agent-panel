@@ -24,7 +24,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  Clock3,
   Trash2,
 } from "lucide-react";
 import Layout from "../components/layout/Layout";
@@ -33,83 +32,26 @@ import { useAuth } from "../context/authContext";
 import { image_uri } from "../utils/constants";
 import { Link } from "react-router";
 
-const DEMO_RIDERS = [
-  {
-    _id: "68bf1aa727a254fc9d5240d7",
-    name: "Sagor Chandra Aich",
-    phone: "01310047696",
-    email: "Sagoraich52@gmail.com",
-    address: "Banchanagar, sakharipara",
-    status: "active",
-    currentSession: "busy",
-    earning: 2703,
-    cash: 1765,
-    isVerify: true,
-    image: "",
-  },
-  {
-    _id: "68ca896d1f2377a038b981a3",
-    name: "Rubel Hossain",
-    phone: "01871460082",
-    email: "lsrubel@gmail.com",
-    address: "LX lakshmipur",
-    status: "active",
-    currentSession: "busy",
-    earning: 2275,
-    cash: 22102,
-    isVerify: true,
-    image: "",
-  },
-  {
-    _id: "69317cc6685af804c5677cfa",
-    name: "Shajon Miah",
-    phone: "01703816169",
-    email: "Hirajulislam012@gmail.com",
-    address: "hajirpara Chandraganj lakshmipur",
-    status: "waiting for approved",
-    currentSession: "offline",
-    earning: 0,
-    cash: 0,
-    isVerify: false,
-    image: "",
-  },
-];
-
-const DEMO_WITHDRAWS = [
-  {
-    _id: "w1",
-    riderId: "6909f716ac65fb6994cc99f1",
-    phone: "01861113852",
-    amount: 786,
-    paymentMethod: "Bkash",
-    status: "Completed",
-    createdAt: "2026-03-23T16:32:52",
-  },
-];
-
-const DEMO_COLLECTIONS = [
-  {
-    _id: "c1",
-    riderId: "6909f716ac65fb6994cc99f1",
-    senderNumber: "01861113852",
-    amount: 5387,
-    transactionId: "Dhrhrvrhrhv",
-    paymentMethod: "Bkash",
-    status: "Completed",
-    createdAt: "2026-03-23T16:33:26",
-    updatedAt: "2026-03-23T16:34:04",
-  },
-];
-
 const RIDER_STATUS_OPTIONS = [
   "waiting for approved",
-  "not approved",
   "active",
+  "busy",
   "banned",
-  "closed",
 ];
 
-const SESSION_OPTIONS = ["busy", "online", "break", "offline"];
+const SESSION_OPTIONS = [
+  "available",
+  "out for delivery",
+  "break",
+  "offline",
+];
+
+const PAYMENT_STATUS_OPTIONS = [
+  "Pending",
+  "Processing",
+  "Completed",
+  "Invalid",
+];
 
 const num = (value) => {
   const n = Number(value || 0);
@@ -138,23 +80,36 @@ const getEmail = (rider) => rider?.email || "N/A";
 const getAddress = (rider) => rider?.address || rider?.location || "N/A";
 
 const getImage = (rider) => {
-  if (!rider?.image) return "";
-  return `${image_uri}${rider.image}`;
+  const file = rider?.profileImage || rider?.image || "";
+  if (!file) return "";
+  return `${image_uri}${file}`;
 };
+
+const getAccountStatus = (rider) =>
+  rider?.riderStatus || rider?.status || "waiting for approved";
+
+const getSessionStatus = (rider) =>
+  rider?.session || rider?.currentSession || "offline";
+
+const getCash = (rider) =>
+  num(rider?.cashCollection ?? rider?.cash ?? 0);
+
+const getEarning = (rider) =>
+  num(rider?.earning ?? 0);
 
 const getStatusColor = (status) => {
   const value = String(status || "").toLowerCase();
   if (value === "active") return "green";
-  if (value === "waiting for approved") return "orange";
-  if (value === "banned" || value === "closed") return "red";
-  if (value === "not approved") return "volcano";
+  if (value === "busy") return "orange";
+  if (value === "waiting for approved") return "blue";
+  if (value === "banned") return "red";
   return "default";
 };
 
 const getSessionColor = (status) => {
   const value = String(status || "").toLowerCase();
-  if (value === "busy") return "orange";
-  if (value === "online") return "green";
+  if (value === "available") return "green";
+  if (value === "out for delivery") return "orange";
   if (value === "break") return "gold";
   if (value === "offline") return "red";
   return "default";
@@ -177,8 +132,8 @@ function RiderCard({
   localStatus,
   localSession,
 }) {
-  const status = localStatus || rider.status || "active";
-  const currentSession = localSession || rider.currentSession || "offline";
+  const status = localStatus || getAccountStatus(rider);
+  const currentSession = localSession || getSessionStatus(rider);
   const avatarSrc = getImage(rider);
 
   return (
@@ -248,7 +203,7 @@ function RiderCard({
               Earning
             </div>
             <p className="mt-2 text-base font-black text-slate-900">
-              {money(rider?.earning)}
+              {money(getEarning(rider))}
             </p>
           </div>
 
@@ -258,7 +213,7 @@ function RiderCard({
               Cash
             </div>
             <p className="mt-2 text-base font-black text-slate-900">
-              {money(rider?.cash)}
+              {money(getCash(rider))}
             </p>
           </div>
         </div>
@@ -309,15 +264,13 @@ function Riders() {
   const { data: ridersData = [], isLoading, refetch } = useQuery({
     queryKey: ["riders", user?.zoneId],
     queryFn: async () => {
-      try {
-        const response = await api.post("/zone/rider-list", {
-          zoneId: user?.zoneId,
-        });
-        const payload = response?.data;
-        return payload?.result || payload?.data || payload || DEMO_RIDERS;
-      } catch {
-        return DEMO_RIDERS;
-      }
+      const response = await api.post("/zone/rider-list?limit=100&page=1", {});
+      const payload = response?.data;
+      return Array.isArray(payload?.result)
+        ? payload.result
+        : Array.isArray(payload?.data)
+        ? payload.data
+        : [];
     },
     enabled: !!user?.zoneId,
     refetchOnMount: "always",
@@ -327,15 +280,13 @@ function Riders() {
   const { data: withdrawData = [] } = useQuery({
     queryKey: ["rider-withdraw-list", user?.zoneId],
     queryFn: async () => {
-      try {
-        const response = await api.post("/zone/rider-withdraw-list", {
-          zoneId: user?.zoneId,
-        });
-        const payload = response?.data;
-        return payload?.result || payload?.data || DEMO_WITHDRAWS;
-      } catch {
-        return DEMO_WITHDRAWS;
-      }
+      const response = await api.get("/zone/payment/rider/withdraw-list?page=1&limit=100");
+      const payload = response?.data;
+      return Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.result)
+        ? payload.result
+        : [];
     },
     enabled: !!user?.zoneId,
   });
@@ -343,15 +294,13 @@ function Riders() {
   const { data: collectionData = [] } = useQuery({
     queryKey: ["rider-cash-collection-list", user?.zoneId],
     queryFn: async () => {
-      try {
-        const response = await api.post("/zone/rider-cash-collection-list", {
-          zoneId: user?.zoneId,
-        });
-        const payload = response?.data;
-        return payload?.result || payload?.data || DEMO_COLLECTIONS;
-      } catch {
-        return DEMO_COLLECTIONS;
-      }
+      const response = await api.get("/zone/payment/rider/cashcollection-list?page=1&limit=100");
+      const payload = response?.data;
+      return Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.result)
+        ? payload.result
+        : [];
     },
     enabled: !!user?.zoneId,
   });
@@ -359,9 +308,8 @@ function Riders() {
   const riders = useMemo(() => {
     return (Array.isArray(ridersData) ? ridersData : []).map((item) => ({
       ...item,
-      status: statusOverrides[item._id] || item.status || "active",
-      currentSession:
-        sessionOverrides[item._id] || item.currentSession || "offline",
+      riderStatus: statusOverrides[item._id] || getAccountStatus(item),
+      session: sessionOverrides[item._id] || getSessionStatus(item),
     }));
   }, [ridersData, statusOverrides, sessionOverrides]);
 
@@ -384,7 +332,8 @@ function Riders() {
 
       const filterMatched =
         filterStatus === "all" ||
-        String(rider?.status || "").toLowerCase() === filterStatus.toLowerCase();
+        String(getAccountStatus(rider) || "").toLowerCase() ===
+          filterStatus.toLowerCase();
 
       return searchMatched && filterMatched;
     });
@@ -405,46 +354,116 @@ function Riders() {
     return {
       total: riders.length,
       active: riders.filter(
-        (item) => String(item.status || "").toLowerCase() === "active",
+        (item) => String(getAccountStatus(item) || "").toLowerCase() === "active"
       ).length,
-      busy: riders.filter(
-        (item) => String(item.currentSession || "").toLowerCase() === "busy",
-      ).length,
-      totalCash: riders.reduce((sum, item) => sum + num(item.cash), 0),
+      totalEarning: riders.reduce((sum, item) => sum + getEarning(item), 0),
+      totalCash: riders.reduce((sum, item) => sum + getCash(item), 0),
     };
   }, [riders]);
 
   const updateRiderStatus = async (rider, value) => {
     setStatusOverrides((prev) => ({ ...prev, [rider._id]: value }));
+
     try {
-      await api.put(`/zone/rider/update-status/${rider._id}`, { status: value });
-      queryClient.invalidateQueries(["riders"]);
-      message.success("Rider status updated");
-    } catch {
-      message.warning("Frontend updated. Connect backend endpoint if needed.");
+      const response = await api.request({
+        method: "put",
+        url: "/zone/rider/update-account-status",
+        data: {
+          riderId: rider._id,
+          status: value,
+        },
+        validateStatus: () => true,
+      });
+
+      if (response?.data?.success) {
+        queryClient.invalidateQueries({ queryKey: ["riders"] });
+        message.success("Rider status updated");
+      } else {
+        throw new Error(response?.data?.message || "Update failed");
+      }
+    } catch (error) {
+      setStatusOverrides((prev) => ({ ...prev, [rider._id]: getAccountStatus(rider) }));
+      message.error(error?.message || "Failed to update rider status");
     }
   };
 
   const updateRiderSession = async (rider, value) => {
     setSessionOverrides((prev) => ({ ...prev, [rider._id]: value }));
+
     try {
-      await api.put(`/zone/rider/update-current-session/${rider._id}`, {
-        currentSession: value,
+      const response = await api.request({
+        method: "put",
+        url: "/zone/rider/update-session-status",
+        data: {
+          riderId: rider._id,
+          session: value,
+        },
+        validateStatus: () => true,
       });
-      queryClient.invalidateQueries(["riders"]);
-      message.success("Rider session updated");
-    } catch {
-      message.warning("Frontend updated. Connect backend endpoint if needed.");
+
+      if (response?.data?.success) {
+        queryClient.invalidateQueries({ queryKey: ["riders"] });
+        message.success("Rider session updated");
+      } else {
+        throw new Error(response?.data?.message || "Update failed");
+      }
+    } catch (error) {
+      setSessionOverrides((prev) => ({ ...prev, [rider._id]: getSessionStatus(rider) }));
+      message.error(error?.message || "Failed to update rider session");
     }
   };
 
   const deleteRider = async (rider) => {
     try {
-      await api.delete(`/zone/rider/${rider._id}`);
-      queryClient.invalidateQueries(["riders"]);
-      message.success("Rider deleted");
-    } catch {
-      message.warning("Delete endpoint not connected yet.");
+      const { data } = await api.delete(`/zone/rider/delete/${rider._id}`);
+      if (data?.success) {
+        queryClient.invalidateQueries({ queryKey: ["riders"] });
+        message.success("Rider deleted");
+      } else {
+        message.error(data?.message || "Delete failed");
+      }
+    } catch (error) {
+      message.error(error?.response?.data?.message || "Delete failed");
+    }
+  };
+
+  const updateWithdrawStatus = async (row, status) => {
+    try {
+      const { data } = await api.put("/zone/payment/rider-withdraw-status", {
+        withdrawId: row._id,
+        status,
+      });
+
+      if (data?.success) {
+        message.success(data?.message || "Withdraw status updated");
+        queryClient.invalidateQueries({ queryKey: ["rider-withdraw-list", user?.zoneId] });
+      } else {
+        message.error(data?.message || "Failed to update withdraw status");
+      }
+    } catch (error) {
+      message.error(error?.response?.data?.message || "Failed to update withdraw status");
+    }
+  };
+
+  const updateCollectionStatus = async (row, status) => {
+    try {
+      const { data } = await api.put("/zone/payment/rider-collection-status", {
+        collectionId: row._id,
+        status,
+      });
+
+      if (data?.success) {
+        message.success(data?.message || "Collection status updated");
+        queryClient.invalidateQueries({
+          queryKey: ["rider-cash-collection-list", user?.zoneId],
+        });
+      } else {
+        message.error(data?.message || "Failed to update collection status");
+      }
+    } catch (error) {
+      message.error(
+        error?.response?.data?.message || "Failed to update collection status"
+      );
     }
   };
 
@@ -488,13 +507,13 @@ function Riders() {
       key: "action",
       render: (_, row) => (
         <Select
-          defaultValue={row.status || "Completed"}
-          className="w-32"
-          options={[
-            { value: "Completed", label: "Completed" },
-            { value: "Pending", label: "Pending" },
-            { value: "Rejected", label: "Rejected" },
-          ]}
+          value={row.status || "Pending"}
+          className="w-36"
+          options={PAYMENT_STATUS_OPTIONS.map((item) => ({
+            value: item,
+            label: item,
+          }))}
+          onChange={(value) => updateWithdrawStatus(row, value)}
         />
       ),
     },
@@ -542,7 +561,7 @@ function Riders() {
       render: (val) => formatDateTime(val),
     },
     {
-      title: "Update At",
+      title: "Updated At",
       dataIndex: "updatedAt",
       key: "updatedAt",
       render: (val) => formatDateTime(val),
@@ -552,13 +571,13 @@ function Riders() {
       key: "action",
       render: (_, row) => (
         <Select
-          defaultValue={row.status || "Completed"}
-          className="w-32"
-          options={[
-            { value: "Completed", label: "Completed" },
-            { value: "Pending", label: "Pending" },
-            { value: "Rejected", label: "Rejected" },
-          ]}
+          value={row.status || "Pending"}
+          className="w-36"
+          options={PAYMENT_STATUS_OPTIONS.map((item) => ({
+            value: item,
+            label: item,
+          }))}
+          onChange={(value) => updateCollectionStatus(row, value)}
         />
       ),
     },
@@ -634,17 +653,17 @@ function Riders() {
                 wrap: "bg-emerald-100 text-emerald-600",
               },
               {
-                title: "Busy Session",
-                value: stats.busy,
-                subtitle: "Busy right now",
-                icon: <Clock3 size={20} />,
+                title: "Total Rider Earning",
+                value: money(stats.totalEarning),
+                subtitle: "Visible rider earning",
+                icon: <Coins size={20} />,
                 wrap: "bg-amber-100 text-amber-600",
               },
               {
                 title: "Total Cash",
                 value: money(stats.totalCash),
                 subtitle: "Visible rider cash",
-                icon: <Coins size={20} />,
+                icon: <Wallet size={20} />,
                 wrap: "bg-violet-100 text-violet-600",
               },
             ].map((item) => (
@@ -678,10 +697,9 @@ function Riders() {
                 options={[
                   { value: "all", label: "Filter: all" },
                   { value: "active", label: "active" },
+                  { value: "busy", label: "busy" },
                   { value: "waiting for approved", label: "waiting for approved" },
-                  { value: "not approved", label: "not approved" },
                   { value: "banned", label: "banned" },
-                  { value: "closed", label: "closed" },
                 ]}
               />
 
@@ -781,9 +799,7 @@ function Riders() {
         footer={null}
         width={1200}
         centered
-        title={
-          <div className="text-2xl font-black text-slate-950">Withdraw List</div>
-        }
+        title={<div className="text-2xl font-black text-slate-950">Withdraw List</div>}
       >
         <Table
           rowKey="_id"
@@ -800,11 +816,7 @@ function Riders() {
         footer={null}
         width={1350}
         centered
-        title={
-          <div className="text-2xl font-black text-slate-950">
-            Cash Collection List
-          </div>
-        }
+        title={<div className="text-2xl font-black text-slate-950">Cash Collection List</div>}
       >
         <Table
           rowKey="_id"
