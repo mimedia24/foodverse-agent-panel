@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Layout from "../components/layout/Layout";
-import { fetchDashboardData } from "../api/mockDashboardApi";
+import { fetchDashboardData } from "../api/dashboardApi";
+import { useAuth } from "../context/authContext";
 import {
   Bike,
   ShoppingBag,
@@ -14,6 +15,11 @@ import {
   Flame,
   Trophy,
   Sparkles,
+  AlertTriangle,
+  RefreshCcw,
+  Phone,
+  Banknote,
+  Hash,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -68,20 +74,24 @@ const toneMap = {
   },
 };
 
-const formatMoney = (value) => `BDT ${Number(value).toLocaleString()}`;
+const formatMoney = (value) => `BDT ${Number(value || 0).toLocaleString()}`;
 
 function useAnimatedNumber(target, duration = 900) {
   const [value, setValue] = useState(0);
 
   useEffect(() => {
+    const safeTarget = Number(target || 0);
     let start = 0;
     let raf = 0;
-    const step = Math.max(1, Math.floor(target / (duration / 16)));
+    const step = Math.max(
+      1,
+      Math.floor(safeTarget / Math.max(1, duration / 16))
+    );
 
     const animate = () => {
       start += step;
-      if (start >= target) {
-        setValue(target);
+      if (start >= safeTarget) {
+        setValue(safeTarget);
         return;
       }
       setValue(start);
@@ -96,7 +106,7 @@ function useAnimatedNumber(target, duration = 900) {
 }
 
 function AnimatedValue({ value, money = false, className = "" }) {
-  const numeric = Number(value);
+  const numeric = Number(value || 0);
   const animated = useAnimatedNumber(numeric);
 
   return (
@@ -227,6 +237,60 @@ function SalesSummaryCard({ item, index }) {
   );
 }
 
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!(active && payload && payload.length)) return null;
+  const data = payload[0]?.payload || {};
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-2xl ring-1 ring-black/5 backdrop-blur-md">
+      <p className="mb-2 border-b border-slate-100 pb-1 text-sm font-bold text-slate-800">
+        {label}
+      </p>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-8">
+          <span className="text-[12px] text-slate-500">Food Sell</span>
+          <span className="text-sm font-bold text-blue-600">
+            {formatMoney(data.foodSell)}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-8">
+          <span className="text-[12px] text-slate-500">Restaurant Sell</span>
+          <span className="text-sm font-bold text-emerald-600">
+            {formatMoney(data.restaurantSell)}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-8">
+          <span className="text-[12px] text-slate-500">Delivery Fee</span>
+          <span className="text-sm font-bold text-amber-600">
+            {formatMoney(data.deliveryFee)}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-8">
+          <span className="text-[12px] text-slate-500">Delivery Profit</span>
+          <span className="text-sm font-bold text-violet-600">
+            {formatMoney(data.deliveryProfit)}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-8">
+          <span className="text-[12px] text-slate-500">Rider Tips</span>
+          <span className="text-sm font-bold text-rose-600">
+            {formatMoney(data.riderTips)}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3 border-t border-slate-100 pt-2 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+        Total Order: {Number(data.totalOrder || 0).toLocaleString("en-BD")}
+      </div>
+    </div>
+  );
+};
+
 function TopEntityCard({ item, type = "restaurant", rank = 1 }) {
   const isRestaurant = type === "restaurant";
 
@@ -251,9 +315,14 @@ function TopEntityCard({ item, type = "restaurant", rank = 1 }) {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          {isRestaurant ? (
-            <>
+        {isRestaurant ? (
+          <>
+            <div className="mt-4 flex items-center gap-2 text-sm text-slate-600">
+              <Phone className="h-4 w-4 text-slate-500" />
+              <span>{item.phone || "N/A"}</span>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
                   Food Sell
@@ -270,48 +339,75 @@ function TopEntityCard({ item, type = "restaurant", rank = 1 }) {
                   {formatMoney(item.restaurantSell)}
                 </p>
               </div>
-            </>
-          ) : (
-            <>
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                  Earnings
-                </p>
-                <p className="mt-2 text-2xl font-black text-slate-950">
-                  {formatMoney(item.earnings)}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                  Rider Tips
-                </p>
-                <p className="mt-2 text-2xl font-black text-slate-950">
-                  {formatMoney(item.tips)}
-                </p>
-              </div>
-            </>
-          )}
-        </div>
+            </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-600">
-          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
-            <Flame className="h-3.5 w-3.5 text-rose-500" />
-            {isRestaurant ? `${item.orders} orders` : `${item.completed} deliveries`}
-          </span>
-          {!isRestaurant ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
-              <Trophy className="h-3.5 w-3.5 text-amber-500" />
-              Rating {item.rating}
-            </span>
-          ) : null}
-        </div>
+            <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-600">
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
+                <Flame className="h-3.5 w-3.5 text-rose-500" />
+                {item.orders} orders
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-4 flex items-center gap-2 text-sm text-slate-600">
+              <Phone className="h-4 w-4 text-slate-500" />
+              <span>{item.phone || "N/A"}</span>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                  Delivered
+                </p>
+                <p className="mt-2 text-2xl font-black text-slate-950">
+                  {item.completed}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                  Cash Collection
+                </p>
+                <p className="mt-2 text-2xl font-black text-slate-950">
+                  {formatMoney(item.cashCollection)}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4 sm:col-span-2">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                  Earning
+                </p>
+                <p className="mt-2 text-2xl font-black text-slate-950">
+                  {formatMoney(item.earning)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-600">
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
+                <Hash className="h-3.5 w-3.5 text-blue-500" />
+                Total Delivered: {item.completed}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
+                <Banknote className="h-3.5 w-3.5 text-emerald-500" />
+                Cash: {formatMoney(item.cashCollection)}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
+                <Trophy className="h-3.5 w-3.5 text-amber-500" />
+                Rating {item.rating}
+              </span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 export default function Dashboard() {
+  const { user, isLoading: authLoading } = useAuth();
+
   const [loading, setLoading] = useState(true);
+  const [errorText, setErrorText] = useState("");
   const [data, setData] = useState({
     zoneName: "",
     stats: [],
@@ -322,29 +418,48 @@ export default function Dashboard() {
     salesSummary: [],
   });
 
+  const loadDashboard = async () => {
+    if (!user?.zoneId) return;
+
+    try {
+      setLoading(true);
+      setErrorText("");
+      const res = await fetchDashboardData(user);
+      setData(res);
+    } catch (error) {
+      console.error("Dashboard load error:", error);
+      setErrorText(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Dashboard data load failed."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let active = true;
-    fetchDashboardData().then((res) => {
-      if (active) {
-        setData(res);
-        setLoading(false);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+    if (authLoading) return;
+
+    if (!user?.zoneId) {
+      setLoading(false);
+      setErrorText("Zone ID not found for this agent.");
+      return;
+    }
+
+    loadDashboard();
+  }, [authLoading, user?.zoneId]);
 
   const heroLabels = useMemo(
     () => [
-      { label: "Aggressive Live UI", icon: Sparkles },
+      { label: "Agent Zone Orders Only", icon: Sparkles },
       { label: "Mobile Responsive", icon: Wallet },
-      { label: "Agent Focused Data", icon: PackageSearch },
+      { label: "Zone Focused Data", icon: PackageSearch },
     ],
     []
   );
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <Layout>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -354,6 +469,36 @@ export default function Dashboard() {
               className="h-44 animate-pulse rounded-[30px] bg-white shadow-sm ring-1 ring-slate-100"
             ></div>
           ))}
+        </div>
+      </Layout>
+    );
+  }
+
+  if (errorText) {
+    return (
+      <Layout>
+        <div className="rounded-[30px] border border-red-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-950">
+                  Dashboard data failed to load
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">{errorText}</p>
+              </div>
+            </div>
+
+            <button
+              onClick={loadDashboard}
+              className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Retry
+            </button>
+          </div>
         </div>
       </Layout>
     );
@@ -371,10 +516,10 @@ export default function Dashboard() {
               Food Verse Agent Admin Panel
             </p>
             <h2 className="mt-4 text-4xl font-black tracking-tight md:text-6xl">
-              {data.zoneName}
+              {data.zoneName || "Zone Dashboard"}
             </h2>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-200 md:text-base">
-              Real-time business insights (Bangladesh Timezone)
+              Only this agent zone restaurants and their orders are shown here.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-3">
@@ -394,33 +539,61 @@ export default function Dashboard() {
         <section className="grid gap-6 xl:grid-cols-2">
           <SectionCard
             title="Order Overview"
-            subtitle="Food sell, restaurant sell, delivery fee, delivery profit, rider tips, and total order"
-            badge="Live Comparison"
+            subtitle="Food sell, restaurant sell, delivery fee, delivery profit, rider tips and total order"
+            badge="Zone Orders"
           >
             <div className="h-[340px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.orderOverview}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <Tooltip
-                    formatter={(value, name) => {
-                      if (name === "Total Order") return [value, name];
-                      return [formatMoney(value), name];
-                    }}
-                    contentStyle={{
-                      borderRadius: 18,
-                      border: "1px solid #e2e8f0",
-                      boxShadow: "0 12px 35px rgba(2,6,23,0.12)",
-                    }}
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#e2e8f0"
                   />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    domain={[0, "auto"]}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
                   <Legend />
-                  <Bar dataKey="foodSell" fill="#2563eb" radius={[10, 10, 0, 0]} name="Food Sell" />
-                  <Bar dataKey="restaurantSell" fill="#22c55e" radius={[10, 10, 0, 0]} name="Restaurant Sell" />
-                  <Bar dataKey="deliveryFee" fill="#f59e0b" radius={[10, 10, 0, 0]} name="Delivery Fee" />
-                  <Bar dataKey="deliveryProfit" fill="#8b5cf6" radius={[10, 10, 0, 0]} name="Delivery Profit" />
-                  <Bar dataKey="riderTips" fill="#ef4444" radius={[10, 10, 0, 0]} name="Rider Tips" />
-                  <Bar dataKey="totalOrder" fill="#0f172a" radius={[10, 10, 0, 0]} name="Total Order" />
+                  <Bar
+                    dataKey="foodSell"
+                    fill="#2563eb"
+                    radius={[10, 10, 0, 0]}
+                    name="Food Sell"
+                  />
+                  <Bar
+                    dataKey="restaurantSell"
+                    fill="#22c55e"
+                    radius={[10, 10, 0, 0]}
+                    name="Restaurant Sell"
+                  />
+                  <Bar
+                    dataKey="deliveryFee"
+                    fill="#f59e0b"
+                    radius={[10, 10, 0, 0]}
+                    name="Delivery Fee"
+                  />
+                  <Bar
+                    dataKey="chartDeliveryProfit"
+                    fill="#8b5cf6"
+                    radius={[10, 10, 0, 0]}
+                    name="Delivery Profit"
+                  />
+                  <Bar
+                    dataKey="riderTips"
+                    fill="#ef4444"
+                    radius={[10, 10, 0, 0]}
+                    name="Rider Tips"
+                  />
+                  <Bar
+                    dataKey="totalOrder"
+                    fill="#0f172a"
+                    radius={[10, 10, 0, 0]}
+                    name="Total Order"
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -428,8 +601,8 @@ export default function Dashboard() {
 
           <SectionCard
             title="Revenue Overview"
-            subtitle="Only sell amount, with aggressive visual emphasis"
-            badge="Sell Amount Only"
+            subtitle="Only food sales"
+            badge="Zone Revenue"
           >
             <div className="h-[340px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -437,10 +610,18 @@ export default function Dashboard() {
                   <defs>
                     <linearGradient id="sellGradient" x1="0" x2="0" y1="0" y2="1">
                       <stop offset="5%" stopColor="#2563eb" stopOpacity={0.5} />
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0.02} />
+                      <stop
+                        offset="95%"
+                        stopColor="#2563eb"
+                        stopOpacity={0.02}
+                      />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#e2e8f0"
+                  />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} />
                   <YAxis tickLine={false} axisLine={false} />
                   <Tooltip
@@ -454,11 +635,11 @@ export default function Dashboard() {
                   <Legend />
                   <Area
                     type="monotone"
-                    dataKey="sellAmount"
+                    dataKey="foodSell"
                     stroke="#2563eb"
                     strokeWidth={4}
                     fill="url(#sellGradient)"
-                    name="Sell Amount"
+                    name="Food Sales"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -469,8 +650,8 @@ export default function Dashboard() {
         <section className="grid gap-6 xl:grid-cols-2">
           <SectionCard
             title="Top Restaurant"
-            subtitle="Only top 2 restaurants, clearly highlighted"
-            badge="Top 2"
+            subtitle="Top 2 restaurants inside this zone only"
+            badge="Zone Top 2"
           >
             <div className="grid gap-4">
               {data.topRestaurants.slice(0, 2).map((item, index) => (
@@ -486,8 +667,8 @@ export default function Dashboard() {
 
           <SectionCard
             title="Top Rider"
-            subtitle="Only top 2 riders, clearly highlighted"
-            badge="Top 2"
+            subtitle="Name, phone, delivered, cash collection and earning"
+            badge="Zone Top 2"
           >
             <div className="grid gap-4">
               {data.topRiders.slice(0, 2).map((item, index) => (
