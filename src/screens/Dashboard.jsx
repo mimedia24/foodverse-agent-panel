@@ -125,7 +125,7 @@ function HeroChip({ icon: Icon, label }) {
   );
 }
 
-function StatCard({ item, index }) {
+function StatCard({ item, index, isUpdating = false }) {
   const Icon = iconMap[item.icon] || ShoppingBag;
   const tone = toneMap[item.tone] || toneMap.blue;
 
@@ -135,15 +135,24 @@ function StatCard({ item, index }) {
       style={{ animationDelay: `${index * 80}ms` }}
     >
       <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-slate-100/70 blur-2xl transition group-hover:scale-125" />
+
       <div className="relative flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-400">
             {item.title}
           </p>
-          <AnimatedValue
-            value={item.value}
-            className="mt-3 block text-4xl font-black tracking-tight text-slate-950"
-          />
+
+          <div className="mt-3 min-h-[48px]">
+            {isUpdating ? (
+              <div className="h-10 w-24 animate-pulse rounded-xl bg-slate-100" />
+            ) : (
+              <AnimatedValue
+                value={item.value}
+                className="block text-4xl font-black tracking-tight text-slate-950"
+              />
+            )}
+          </div>
+
           <p className="mt-2 text-sm text-slate-500">{item.sub}</p>
         </div>
 
@@ -157,9 +166,15 @@ function StatCard({ item, index }) {
   );
 }
 
-function SectionCard({ title, subtitle, children, badge }) {
+function SectionCard({ title, subtitle, children, badge, isUpdating = false }) {
   return (
-    <div className="rounded-[32px] border border-slate-200 bg-white p-4 shadow-[0_10px_35px_rgba(15,23,42,0.06)] md:p-6">
+    <div className="relative rounded-[32px] border border-slate-200 bg-white p-4 shadow-[0_10px_35px_rgba(15,23,42,0.06)] md:p-6">
+      {isUpdating ? (
+        <div className="absolute right-5 top-5 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
+          Updating...
+        </div>
+      ) : null}
+
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-xl font-black tracking-tight text-slate-950">
@@ -167,18 +182,28 @@ function SectionCard({ title, subtitle, children, badge }) {
           </h3>
           <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
         </div>
+
         {badge ? (
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
             {badge}
           </span>
         ) : null}
       </div>
+
       {children}
     </div>
   );
 }
 
-function SalesSummaryCard({ item, index }) {
+function EmptyChartBox({ text = "Data loading..." }) {
+  return (
+    <div className="flex h-[340px] items-center justify-center rounded-3xl bg-slate-50 text-sm font-semibold text-slate-400">
+      {text}
+    </div>
+  );
+}
+
+function SalesSummaryCard({ item, index, isUpdating = false }) {
   const tone = toneMap[item.tone] || toneMap.blue;
 
   const breakdown = [
@@ -201,16 +226,20 @@ function SalesSummaryCard({ item, index }) {
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-semibold text-white/90">{item.title}</p>
           <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white/90">
-            Live
+            {isUpdating ? "Loading" : "Live"}
           </span>
         </div>
 
-        <div className="mt-3">
-          <AnimatedValue
-            value={item.foodSell}
-            money
-            className="block text-4xl font-black tracking-tight md:text-5xl"
-          />
+        <div className="mt-3 min-h-[60px]">
+          {isUpdating ? (
+            <div className="h-12 w-44 animate-pulse rounded-2xl bg-white/15" />
+          ) : (
+            <AnimatedValue
+              value={item.foodSell}
+              money
+              className="block text-4xl font-black tracking-tight md:text-5xl"
+            />
+          )}
         </div>
 
         <div className="mt-6 grid gap-3">
@@ -226,7 +255,7 @@ function SalesSummaryCard({ item, index }) {
                   {row.label}
                 </span>
                 <span className="text-sm font-bold text-white">
-                  {formatMoney(row.value)}
+                  {isUpdating ? "..." : formatMoney(row.value)}
                 </span>
               </div>
             );
@@ -297,12 +326,14 @@ function TopEntityCard({ item, type = "restaurant", rank = 1 }) {
   return (
     <div className="relative overflow-hidden rounded-[30px] border border-slate-200 bg-white p-5 shadow-[0_12px_35px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
       <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-slate-100 blur-3xl" />
+
       <div className="relative">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-slate-950 text-sm font-black text-white">
               #{rank}
             </div>
+
             <div>
               <h4 className="text-lg font-black text-slate-950">{item.name}</h4>
               <p className="mt-1 text-sm text-slate-500">{item.badge}</p>
@@ -331,6 +362,7 @@ function TopEntityCard({ item, type = "restaurant", rank = 1 }) {
                   {formatMoney(item.foodSell)}
                 </p>
               </div>
+
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
                   Restaurant Sell
@@ -364,6 +396,7 @@ function TopEntityCard({ item, type = "restaurant", rank = 1 }) {
                   {item.completed}
                 </p>
               </div>
+
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
                   Cash Collection
@@ -372,6 +405,7 @@ function TopEntityCard({ item, type = "restaurant", rank = 1 }) {
                   {formatMoney(item.cashCollection)}
                 </p>
               </div>
+
               <div className="rounded-2xl bg-slate-50 p-4 sm:col-span-2">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
                   Earning
@@ -387,10 +421,12 @@ function TopEntityCard({ item, type = "restaurant", rank = 1 }) {
                 <Hash className="h-3.5 w-3.5 text-blue-500" />
                 Total Delivered: {item.completed}
               </span>
+
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
                 <Banknote className="h-3.5 w-3.5 text-emerald-500" />
                 Cash: {formatMoney(item.cashCollection)}
               </span>
+
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
                 <Trophy className="h-3.5 w-3.5 text-amber-500" />
                 Rating {item.rating}
@@ -459,50 +495,73 @@ export default function Dashboard() {
     []
   );
 
-  if (loading || authLoading) {
-    return (
-      <Layout>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-44 animate-pulse rounded-[30px] bg-white shadow-sm ring-1 ring-slate-100"
-            ></div>
-          ))}
-        </div>
-      </Layout>
-    );
-  }
+  const dashboardLoading = loading || authLoading;
 
-  if (errorText) {
-    return (
-      <Layout>
-        <div className="rounded-[30px] border border-red-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600">
-                <AlertTriangle className="h-6 w-6" />
-              </div>
-              <div>
-                <h2 className="text-xl font-black text-slate-950">
-                  Dashboard data failed to load
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">{errorText}</p>
-              </div>
-            </div>
+  const fallbackStats = [
+    {
+      title: "Today Order",
+      value: 0,
+      sub: "Orders placed today",
+      tone: "blue",
+      icon: "orders",
+    },
+    {
+      title: "Total Order",
+      value: 0,
+      sub: "All-time zone orders",
+      tone: "violet",
+      icon: "package",
+    },
+    {
+      title: "Total Rider",
+      value: 0,
+      sub: "Zone riders",
+      tone: "indigo",
+      icon: "rider",
+    },
+    {
+      title: "Total Restaurant",
+      value: 0,
+      sub: "Zone restaurants",
+      tone: "amber",
+      icon: "restaurant",
+    },
+  ];
 
-            <button
-              onClick={loadDashboard}
-              className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-            >
-              <RefreshCcw className="h-4 w-4" />
-              Retry
-            </button>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
+  const fallbackSalesSummary = [
+    {
+      title: "Today's Sales",
+      foodSell: 0,
+      restaurantSell: 0,
+      deliveryFee: 0,
+      deliveryProfit: 0,
+      riderTips: 0,
+      tone: "blue",
+    },
+    {
+      title: "Weekly Sales",
+      foodSell: 0,
+      restaurantSell: 0,
+      deliveryFee: 0,
+      deliveryProfit: 0,
+      riderTips: 0,
+      tone: "emerald",
+    },
+    {
+      title: "Monthly Sales",
+      foodSell: 0,
+      restaurantSell: 0,
+      deliveryFee: 0,
+      deliveryProfit: 0,
+      riderTips: 0,
+      tone: "violet",
+    },
+  ];
+
+  const displayStats = data.stats?.length ? data.stats : fallbackStats;
+  const displaySalesSummary = data.salesSummary?.length
+    ? data.salesSummary
+    : fallbackSalesSummary;
 
   return (
     <Layout>
@@ -511,13 +570,16 @@ export default function Dashboard() {
           <div className="absolute -left-16 -top-16 h-40 w-40 rounded-full bg-cyan-400/20 blur-3xl" />
           <div className="absolute -right-20 top-0 h-56 w-56 rounded-full bg-fuchsia-500/15 blur-3xl" />
           <div className="absolute bottom-0 right-20 h-36 w-36 rounded-full bg-blue-300/10 blur-3xl" />
+
           <div className="relative">
             <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-blue-200">
               Food Verse Agent Admin Panel
             </p>
+
             <h2 className="mt-4 text-4xl font-black tracking-tight md:text-6xl">
-              {data.zoneName || "Zone Dashboard"}
+              {data.zoneName || user?.name || "Zone Dashboard"}
             </h2>
+
             <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-200 md:text-base">
               Only this agent zone restaurants and their orders are shown here.
             </p>
@@ -530,9 +592,33 @@ export default function Dashboard() {
           </div>
         </section>
 
+        {errorText ? (
+          <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 shrink-0" />
+                <span>{errorText}</span>
+              </div>
+
+              <button
+                onClick={loadDashboard}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white"
+              >
+                <RefreshCcw className="h-4 w-4" />
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {data.stats.map((item, index) => (
-            <StatCard key={item.title} item={item} index={index} />
+          {displayStats.map((item, index) => (
+            <StatCard
+              key={item.title}
+              item={item}
+              index={index}
+              isUpdating={dashboardLoading}
+            />
           ))}
         </section>
 
@@ -541,109 +627,129 @@ export default function Dashboard() {
             title="Order Overview"
             subtitle="Food sell, restaurant sell, delivery fee, delivery profit, rider tips and total order"
             badge="Zone Orders"
+            isUpdating={dashboardLoading}
           >
-            <div className="h-[340px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.orderOverview}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#e2e8f0"
-                  />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    domain={[0, "auto"]}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend />
-                  <Bar
-                    dataKey="foodSell"
-                    fill="#2563eb"
-                    radius={[10, 10, 0, 0]}
-                    name="Food Sell"
-                  />
-                  <Bar
-                    dataKey="restaurantSell"
-                    fill="#22c55e"
-                    radius={[10, 10, 0, 0]}
-                    name="Restaurant Sell"
-                  />
-                  <Bar
-                    dataKey="deliveryFee"
-                    fill="#f59e0b"
-                    radius={[10, 10, 0, 0]}
-                    name="Delivery Fee"
-                  />
-                  <Bar
-                    dataKey="chartDeliveryProfit"
-                    fill="#8b5cf6"
-                    radius={[10, 10, 0, 0]}
-                    name="Delivery Profit"
-                  />
-                  <Bar
-                    dataKey="riderTips"
-                    fill="#ef4444"
-                    radius={[10, 10, 0, 0]}
-                    name="Rider Tips"
-                  />
-                  <Bar
-                    dataKey="totalOrder"
-                    fill="#0f172a"
-                    radius={[10, 10, 0, 0]}
-                    name="Total Order"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {data.orderOverview?.length ? (
+              <div className="h-[340px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.orderOverview}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="#e2e8f0"
+                    />
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      domain={[0, "auto"]}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend />
+                    <Bar
+                      dataKey="foodSell"
+                      fill="#2563eb"
+                      radius={[10, 10, 0, 0]}
+                      name="Food Sell"
+                    />
+                    <Bar
+                      dataKey="restaurantSell"
+                      fill="#22c55e"
+                      radius={[10, 10, 0, 0]}
+                      name="Restaurant Sell"
+                    />
+                    <Bar
+                      dataKey="deliveryFee"
+                      fill="#f59e0b"
+                      radius={[10, 10, 0, 0]}
+                      name="Delivery Fee"
+                    />
+                    <Bar
+                      dataKey="chartDeliveryProfit"
+                      fill="#8b5cf6"
+                      radius={[10, 10, 0, 0]}
+                      name="Delivery Profit"
+                    />
+                    <Bar
+                      dataKey="riderTips"
+                      fill="#ef4444"
+                      radius={[10, 10, 0, 0]}
+                      name="Rider Tips"
+                    />
+                    <Bar
+                      dataKey="totalOrder"
+                      fill="#0f172a"
+                      radius={[10, 10, 0, 0]}
+                      name="Total Order"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChartBox text={dashboardLoading ? "Loading chart..." : "No order chart data found"} />
+            )}
           </SectionCard>
 
           <SectionCard
             title="Revenue Overview"
             subtitle="Only food sales"
             badge="Zone Revenue"
+            isUpdating={dashboardLoading}
           >
-            <div className="h-[340px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data.revenueOverview}>
-                  <defs>
-                    <linearGradient id="sellGradient" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.5} />
-                      <stop
-                        offset="95%"
-                        stopColor="#2563eb"
-                        stopOpacity={0.02}
-                      />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#e2e8f0"
-                  />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <Tooltip
-                    formatter={(value) => formatMoney(value)}
-                    contentStyle={{
-                      borderRadius: 18,
-                      border: "1px solid #e2e8f0",
-                      boxShadow: "0 12px 35px rgba(2,6,23,0.12)",
-                    }}
-                  />
-                  <Legend />
-                  <Area
-                    type="monotone"
-                    dataKey="foodSell"
-                    stroke="#2563eb"
-                    strokeWidth={4}
-                    fill="url(#sellGradient)"
-                    name="Food Sales"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {data.revenueOverview?.length ? (
+              <div className="h-[340px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={data.revenueOverview}>
+                    <defs>
+                      <linearGradient
+                        id="sellGradient"
+                        x1="0"
+                        x2="0"
+                        y1="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="5%"
+                          stopColor="#2563eb"
+                          stopOpacity={0.5}
+                        />
+                        <stop
+                          offset="95%"
+                          stopColor="#2563eb"
+                          stopOpacity={0.02}
+                        />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="#e2e8f0"
+                    />
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                    <YAxis tickLine={false} axisLine={false} />
+                    <Tooltip
+                      formatter={(value) => formatMoney(value)}
+                      contentStyle={{
+                        borderRadius: 18,
+                        border: "1px solid #e2e8f0",
+                        boxShadow: "0 12px 35px rgba(2,6,23,0.12)",
+                      }}
+                    />
+                    <Legend />
+                    <Area
+                      type="monotone"
+                      dataKey="foodSell"
+                      stroke="#2563eb"
+                      strokeWidth={4}
+                      fill="url(#sellGradient)"
+                      name="Food Sales"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChartBox text={dashboardLoading ? "Loading revenue..." : "No revenue data found"} />
+            )}
           </SectionCard>
         </section>
 
@@ -652,40 +758,55 @@ export default function Dashboard() {
             title="Top Restaurant"
             subtitle="Top 2 restaurants inside this zone only"
             badge="Zone Top 2"
+            isUpdating={dashboardLoading}
           >
-            <div className="grid gap-4">
-              {data.topRestaurants.slice(0, 2).map((item, index) => (
-                <TopEntityCard
-                  key={item.id}
-                  item={item}
-                  rank={index + 1}
-                  type="restaurant"
-                />
-              ))}
-            </div>
+            {data.topRestaurants?.length ? (
+              <div className="grid gap-4">
+                {data.topRestaurants.slice(0, 2).map((item, index) => (
+                  <TopEntityCard
+                    key={item.id || index}
+                    item={item}
+                    rank={index + 1}
+                    type="restaurant"
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyChartBox text={dashboardLoading ? "Loading top restaurants..." : "No top restaurant data found"} />
+            )}
           </SectionCard>
 
           <SectionCard
             title="Top Rider"
             subtitle="Name, phone, delivered, cash collection and earning"
             badge="Zone Top 2"
+            isUpdating={dashboardLoading}
           >
-            <div className="grid gap-4">
-              {data.topRiders.slice(0, 2).map((item, index) => (
-                <TopEntityCard
-                  key={item.id}
-                  item={item}
-                  rank={index + 1}
-                  type="rider"
-                />
-              ))}
-            </div>
+            {data.topRiders?.length ? (
+              <div className="grid gap-4">
+                {data.topRiders.slice(0, 2).map((item, index) => (
+                  <TopEntityCard
+                    key={item.id || index}
+                    item={item}
+                    rank={index + 1}
+                    type="rider"
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyChartBox text={dashboardLoading ? "Loading top riders..." : "No top rider data found"} />
+            )}
           </SectionCard>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-3">
-          {data.salesSummary.map((item, index) => (
-            <SalesSummaryCard key={item.title} item={item} index={index} />
+          {displaySalesSummary.map((item, index) => (
+            <SalesSummaryCard
+              key={item.title}
+              item={item}
+              index={index}
+              isUpdating={dashboardLoading}
+            />
           ))}
         </section>
       </div>

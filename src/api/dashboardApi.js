@@ -16,11 +16,51 @@ function formatDateKey(date) {
   }).format(date);
 }
 
+function getMonthKeyBD(date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: BD_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+  }).format(date);
+}
+
 function getDayLabel(date) {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: BD_TIMEZONE,
     weekday: "short",
   }).format(date);
+}
+
+function extractCount(payload, fallback = 0) {
+  if (typeof payload === "number") return payload;
+  if (!payload) return fallback;
+
+  if (typeof payload?.totalCount === "number") return payload.totalCount;
+  if (typeof payload?.count === "number") return payload.count;
+  if (typeof payload?.total === "number") return payload.total;
+  if (typeof payload?.orderCount === "number") return payload.orderCount;
+
+  if (typeof payload?.data?.totalCount === "number")
+    return payload.data.totalCount;
+  if (typeof payload?.data?.count === "number") return payload.data.count;
+  if (typeof payload?.data?.total === "number") return payload.data.total;
+  if (typeof payload?.data?.orderCount === "number")
+    return payload.data.orderCount;
+
+  if (Array.isArray(payload?.data)) return payload.data.length;
+  if (Array.isArray(payload?.result)) return payload.result.length;
+  if (Array.isArray(payload?.orders)) return payload.orders.length;
+  if (Array.isArray(payload)) return payload.length;
+
+  return fallback;
+}
+
+function getArrayFromResponse(data) {
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.result)) return data.result;
+  if (Array.isArray(data?.orders)) return data.orders;
+  if (Array.isArray(data)) return data;
+  return [];
 }
 
 function getOrderDate(order) {
@@ -33,12 +73,33 @@ function getOrderDate(order) {
   );
 }
 
+function isCurrentMonthOrder(order) {
+  const rawDate = getOrderDate(order);
+  if (!rawDate) return false;
+
+  const orderDate = new Date(rawDate);
+  if (Number.isNaN(orderDate.getTime())) return false;
+
+  return getMonthKeyBD(orderDate) === getMonthKeyBD(new Date());
+}
+
+function isOlderThanCurrentMonth(order) {
+  const rawDate = getOrderDate(order);
+  if (!rawDate) return false;
+
+  const orderDate = new Date(rawDate);
+  if (Number.isNaN(orderDate.getTime())) return false;
+
+  return getMonthKeyBD(orderDate) < getMonthKeyBD(new Date());
+}
+
 function getRestaurantId(order) {
   return (
     order?.restaurantId?._id ||
     order?.restaurantId ||
     order?.restaurant?._id ||
-    order?.restaurant?._id ||
+    order?.restaurant ||
+    order?.restaurantInfo?._id ||
     null
   );
 }
@@ -49,6 +110,8 @@ function getRestaurantName(order) {
     order?.restaurantId?.name ||
     order?.restaurant?.restaurantName ||
     order?.restaurant?.name ||
+    order?.restaurantInfo?.restaurantName ||
+    order?.restaurantInfo?.name ||
     order?.rsName ||
     order?.restaurantName ||
     "Restaurant"
@@ -63,6 +126,8 @@ function getRestaurantPhone(order) {
     order?.restaurant?.phoneNumber ||
     order?.restaurant?.phone ||
     order?.restaurant?.mobile ||
+    order?.restaurantInfo?.phoneNumber ||
+    order?.restaurantInfo?.phone ||
     order?.restaurantPhone ||
     "N/A"
   );
@@ -73,8 +138,15 @@ function getRiderId(order) {
     order?.riderId?._id ||
     order?.riderId ||
     order?.rider?._id ||
+    order?.rider ||
     order?.assignedRider?._id ||
+    order?.assignedRider ||
     order?.riderInfo?._id ||
+    order?.riderInfo ||
+    order?.deliveryBoy?._id ||
+    order?.deliveryBoy ||
+    order?.deliveryMan?._id ||
+    order?.deliveryMan ||
     null
   );
 }
@@ -93,8 +165,13 @@ function getRiderName(order) {
     order?.riderInfo?.name ||
     order?.riderInfo?.fullName ||
     order?.riderInfo?.riderName ||
+    order?.deliveryBoy?.name ||
+    order?.deliveryBoy?.fullName ||
+    order?.deliveryMan?.name ||
+    order?.deliveryMan?.fullName ||
     order?.riderName ||
     order?.deliveryBoyName ||
+    order?.deliveryManName ||
     ""
   );
 }
@@ -113,8 +190,13 @@ function getRiderPhone(order) {
     order?.riderInfo?.phoneNumber ||
     order?.riderInfo?.phone ||
     order?.riderInfo?.mobile ||
+    order?.deliveryBoy?.phoneNumber ||
+    order?.deliveryBoy?.phone ||
+    order?.deliveryMan?.phoneNumber ||
+    order?.deliveryMan?.phone ||
     order?.riderPhone ||
     order?.deliveryBoyPhone ||
+    order?.deliveryManPhone ||
     "N/A"
   );
 }
@@ -123,7 +205,8 @@ function getOrderMetrics(order) {
   const items = Array.isArray(order?.items) ? order.items : [];
 
   const restaurantFoodSale = items.reduce(
-    (sum, item) => sum + toNumber(item?.basedPrice) * toNumber(item?.quantity || 1),
+    (sum, item) =>
+      sum + toNumber(item?.basedPrice) * toNumber(item?.quantity || 1),
     0
   );
 
@@ -132,11 +215,13 @@ function getOrderMetrics(order) {
       toNumber(item?.sellingPrice) > 0
         ? toNumber(item?.sellingPrice)
         : toNumber(item?.offerPrice);
+
     return sum + selling * toNumber(item?.quantity || 1);
   }, 0);
 
   const addonsTotal = items.reduce((sum, item) => {
     const addons = Array.isArray(item?.addons) ? item.addons : [];
+
     return (
       sum +
       addons.reduce(
@@ -147,9 +232,33 @@ function getOrderMetrics(order) {
     );
   }, 0);
 
-  const foodSell = customerFoodSale + addonsTotal;
-  const restaurantSell = restaurantFoodSale + addonsTotal;
-  const riderTips = toNumber(order?.riderTips ?? order?.tips ?? order?.tip ?? 0);
+  const fallbackFoodSell = toNumber(
+    order?.foodSell ??
+      order?.foodSales ??
+      order?.totalSales ??
+      order?.totalAmount ??
+      order?.grandTotal ??
+      order?.orderAmount ??
+      0
+  );
+
+  const fallbackRestaurantSell = toNumber(
+    order?.restaurantSell ??
+      order?.restaurantSales ??
+      order?.restaurantAmount ??
+      order?.restaurantTotal ??
+      order?.storeAmount ??
+      0
+  );
+
+  const foodSell = customerFoodSale + addonsTotal || fallbackFoodSell;
+  const restaurantSell =
+    restaurantFoodSale + addonsTotal || fallbackRestaurantSell || foodSell;
+
+  const riderTips = toNumber(
+    order?.riderTips ?? order?.tips ?? order?.tip ?? order?.tipAmount ?? 0
+  );
+
   const deliveryFee = toNumber(
     order?.deliveryChargeCollected ??
       order?.deliveryAmount ??
@@ -158,6 +267,7 @@ function getOrderMetrics(order) {
       order?.delivery ??
       0
   );
+
   const riderCost = toNumber(
     order?.riderFee ??
       order?.riderCost ??
@@ -171,10 +281,10 @@ function getOrderMetrics(order) {
   return {
     foodSell,
     restaurantSell,
-    foodMargin: Math.max(customerFoodSale - restaurantFoodSale, 0),
     deliveryFee,
     deliveryProfit: deliveryFee - riderCost,
     riderTips,
+    riderCost,
   };
 }
 
@@ -205,23 +315,13 @@ function getTodayRangeBD() {
   return formatDateKey(new Date());
 }
 
-function getMonthKeyBD(date) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: BD_TIMEZONE,
-    year: "numeric",
-    month: "2-digit",
-  }).format(date);
-}
-
 function buildWeekDaysFromOrders(orders = []) {
   const now = new Date();
-
-  const bdNow = new Date(
-    now.toLocaleString("en-US", { timeZone: BD_TIMEZONE })
-  );
+  const bdNow = new Date(now.toLocaleString("en-US", { timeZone: BD_TIMEZONE }));
 
   const day = bdNow.getDay();
   const diffToSaturday = (day + 1) % 7;
+
   const start = new Date(bdNow);
   start.setDate(bdNow.getDate() - diffToSaturday);
   start.setHours(0, 0, 0, 0);
@@ -276,103 +376,107 @@ function buildWeekDaysFromOrders(orders = []) {
   }));
 }
 
-async function fetchAllZoneOrders(zoneId) {
+async function fetchZoneOrdersForDashboard(zoneId) {
   let page = 1;
   const limit = 100;
-  let allOrders = [];
+  const MAX_MONTH_PAGES = 12;
+
+  let allMonthOrders = [];
   let totalCount = 0;
-  let keepGoing = true;
 
-  while (keepGoing) {
-    const { data } = await api.post(
-      `/zone/order-list?page=${page}&limit=${limit}`,
-      { zoneId }
-    );
+  while (page <= MAX_MONTH_PAGES) {
+    try {
+      const { data } = await api.post(
+        `/zone/order-list?page=${page}&limit=${limit}`,
+        { zoneId }
+      );
 
-    const batch = data?.data || data?.result || data?.orders || [];
-    totalCount = data?.totalCount || data?.count || data?.total || totalCount;
+      const batch = getArrayFromResponse(data);
+      const pageTotal = extractCount(data, 0);
 
-    if (Array.isArray(batch)) {
-      allOrders = [...allOrders, ...batch];
-    }
+      if (pageTotal) totalCount = pageTotal;
 
-    if (!Array.isArray(batch) || batch.length < limit) {
-      keepGoing = false;
-    } else if (totalCount && allOrders.length >= totalCount) {
-      keepGoing = false;
-    } else {
+      if (!batch.length) break;
+
+      const currentMonthBatch = batch.filter(isCurrentMonthOrder);
+      allMonthOrders = [...allMonthOrders, ...currentMonthBatch];
+
+      const hasOlderOrder = batch.some(isOlderThanCurrentMonth);
+      if (hasOlderOrder && currentMonthBatch.length > 0) break;
+
+      if (batch.length < limit) break;
       page += 1;
+    } catch (error) {
+      console.warn(
+        `Dashboard order page ${page} failed. Showing loaded month orders only.`,
+        error?.response?.data?.message || error?.message
+      );
+      break;
     }
   }
 
-  return Array.from(
-    new Map(allOrders.map((item) => [item?._id, item])).values()
+  const orders = Array.from(
+    new Map(
+      allMonthOrders
+        .filter(Boolean)
+        .map((item, index) => [item?._id || item?.id || `order-${index}`, item])
+    ).values()
   );
+
+  return {
+    orders,
+    totalOrders: totalCount || orders.length,
+  };
 }
 
 async function fetchAllZoneRestaurants(zoneId) {
-  let page = 1;
-  const limit = 100;
-  let allRestaurants = [];
-  let keepGoing = true;
-
-  while (keepGoing) {
+  try {
     const { data } = await api.post("/zone/restaurant-list", {
       zoneId,
-      page,
-      limit,
+      page: 1,
+      limit: 300,
     });
 
-    const batch = Array.isArray(data?.result)
-      ? data.result
-      : Array.isArray(data?.data)
-      ? data.data
-      : [];
+    const restaurants = getArrayFromResponse(data);
 
-    allRestaurants = [...allRestaurants, ...batch];
-
-    if (batch.length < limit) {
-      keepGoing = false;
-    } else {
-      page += 1;
-    }
+    return Array.from(
+      new Map(
+        restaurants
+          .filter(Boolean)
+          .map((item, index) => [item?._id || item?.id || `restaurant-${index}`, item])
+      ).values()
+    );
+  } catch (error) {
+    console.warn(
+      "Dashboard restaurant list failed.",
+      error?.response?.data?.message || error?.message
+    );
+    return [];
   }
-
-  return Array.from(
-    new Map(allRestaurants.map((item) => [item?._id, item])).values()
-  );
 }
 
 async function fetchAllZoneRiders(zoneId) {
-  let page = 1;
-  const limit = 100;
-  let allRiders = [];
-  let keepGoing = true;
+  try {
+    const { data } = await api.post(`/zone/rider-list?limit=200&page=1`, {
+      zoneId,
+    });
 
-  while (keepGoing) {
-    const { data } = await api.post(
-      `/zone/rider-list?limit=${limit}&page=${page}`,
-      { zoneId }
+    const riders = getArrayFromResponse(data);
+
+    return Array.from(
+      new Map(
+        riders
+          .filter(Boolean)
+          .map((item, index) => [item?._id || item?.id || `rider-${index}`, item])
+      ).values()
     );
-
-    const batch = Array.isArray(data?.result)
-      ? data.result
-      : Array.isArray(data?.data)
-      ? data.data
-      : [];
-
-    allRiders = [...allRiders, ...batch];
-
-    if (batch.length < limit) {
-      keepGoing = false;
-    } else {
-      page += 1;
-    }
+  } catch (error) {
+    console.warn(
+      "Dashboard rider list failed.",
+      error?.response?.data?.message || error?.message
+    );
+    return [];
   }
-
-  return Array.from(
-    new Map(allRiders.map((item) => [item?._id, item])).values()
-  );
 }
 
 function normalizeStats({
@@ -392,7 +496,7 @@ function normalizeStats({
     {
       title: "Total Order",
       value: totalOrders,
-      sub: "Orders in your zone",
+      sub: "All-time zone orders",
       tone: "violet",
       icon: "package",
     },
@@ -507,17 +611,21 @@ function buildSummaryFromOrders(orders = []) {
   };
 }
 
-function normalizeTopRestaurants(restaurants = [], orders = []) {
+function normalizeTopRestaurants(restaurants = [], monthOrders = []) {
   const map = new Map();
 
   restaurants.forEach((restaurant) => {
-    map.set(restaurant?._id, {
-      id: restaurant?._id,
+    const id = restaurant?._id || restaurant?.id;
+    if (!id) return;
+
+    map.set(id, {
+      id,
       name: restaurant?.restaurantName || restaurant?.name || "Restaurant",
       phone:
         restaurant?.phoneNumber ||
         restaurant?.phone ||
         restaurant?.restaurantPhone ||
+        restaurant?.mobile ||
         "N/A",
       orders: 0,
       foodSell: 0,
@@ -526,7 +634,7 @@ function normalizeTopRestaurants(restaurants = [], orders = []) {
     });
   });
 
-  orders.forEach((order) => {
+  monthOrders.forEach((order) => {
     const restaurantId = getRestaurantId(order);
     if (!restaurantId) return;
 
@@ -549,27 +657,41 @@ function normalizeTopRestaurants(restaurants = [], orders = []) {
     current.foodSell += metrics.foodSell;
     current.restaurantSell += metrics.restaurantSell;
 
+    if (!current.name || current.name === "Restaurant") {
+      current.name = getRestaurantName(order);
+    }
+
     if (!current.phone || current.phone === "N/A") {
       current.phone = getRestaurantPhone(order);
     }
   });
 
   return [...map.values()]
-    .sort((a, b) => b.foodSell - a.foodSell || b.orders - a.orders)
+    .filter((item) => item.foodSell > 0 || item.orders > 0)
+    .sort(
+      (a, b) =>
+        b.foodSell - a.foodSell ||
+        b.restaurantSell - a.restaurantSell ||
+        b.orders - a.orders
+    )
     .slice(0, 2)
     .map((item) => ({
       ...item,
+      orders: Math.trunc(item.orders),
       foodSell: Math.trunc(item.foodSell),
       restaurantSell: Math.trunc(item.restaurantSell),
     }));
 }
 
-function normalizeTopRiders(riders = [], orders = []) {
+function normalizeTopRiders(riders = [], monthOrders = []) {
   const map = new Map();
 
   riders.forEach((rider) => {
-    map.set(rider?._id, {
-      id: rider?._id,
+    const id = rider?._id || rider?.id;
+    if (!id) return;
+
+    map.set(id, {
+      id,
       name:
         rider?.name ||
         rider?.fullName ||
@@ -582,6 +704,7 @@ function normalizeTopRiders(riders = [], orders = []) {
         rider?.mobile ||
         rider?.contactNumber ||
         "N/A",
+      orders: 0,
       completed: 0,
       earning: toNumber(
         rider?.earning ??
@@ -591,17 +714,14 @@ function normalizeTopRiders(riders = [], orders = []) {
           0
       ),
       cashCollection: toNumber(
-        rider?.cashCollection ??
-          rider?.cashCollected ??
-          rider?.cash ??
-          0
+        rider?.cashCollection ?? rider?.cashCollected ?? rider?.cash ?? 0
       ),
       rating: rider?.rating || 5,
       badge: "Top Performer",
     });
   });
 
-  orders.forEach((order) => {
+  monthOrders.forEach((order) => {
     const riderId = getRiderId(order);
     if (!riderId) return;
 
@@ -610,6 +730,7 @@ function normalizeTopRiders(riders = [], orders = []) {
         id: riderId,
         name: getRiderName(order),
         phone: getRiderPhone(order),
+        orders: 0,
         completed: 0,
         earning: 0,
         cashCollection: 0,
@@ -619,33 +740,34 @@ function normalizeTopRiders(riders = [], orders = []) {
     }
 
     const current = map.get(riderId);
+    const metrics = getOrderMetrics(order);
 
+    current.orders += 1;
+    current.earning += metrics.riderCost;
+    current.cashCollection += getCashCollection(order);
+
+    if (isDeliveredOrder(order)) current.completed += 1;
     if (!current.name) current.name = getRiderName(order);
     if (!current.phone || current.phone === "N/A") {
       current.phone = getRiderPhone(order);
     }
-
-    if (isDeliveredOrder(order)) {
-      current.completed += 1;
-    }
-
-    current.earning += getOrderMetrics(order).deliveryFee - getOrderMetrics(order).deliveryProfit;
-    current.cashCollection += getCashCollection(order);
   });
 
   return [...map.values()]
+    .filter((item) => item.orders > 0)
     .sort(
       (a, b) =>
+        b.orders - a.orders ||
         b.completed - a.completed ||
-        b.earning - a.earning ||
-        b.cashCollection - a.cashCollection
+        b.earning - a.earning
     )
     .slice(0, 2)
     .map((item, index) => ({
       id: item.id || index + 1,
       name: item.name || `Rider ${index + 1}`,
       phone: item.phone || "N/A",
-      completed: item.completed,
+      orders: Math.trunc(item.orders),
+      completed: Math.trunc(item.completed || item.orders),
       earning: Math.trunc(item.earning),
       cashCollection: Math.trunc(item.cashCollection),
       rating: item.rating || 5,
@@ -712,26 +834,52 @@ export async function fetchDashboardData(user) {
     throw new Error("Zone ID not found. Please login again.");
   }
 
-  const [orders, restaurants, riders] = await Promise.all([
-    fetchAllZoneOrders(zoneId),
-    fetchAllZoneRestaurants(zoneId),
-    fetchAllZoneRiders(zoneId),
-  ]);
+  const [ordersResult, restaurantsResult, ridersResult] =
+    await Promise.allSettled([
+      fetchZoneOrdersForDashboard(zoneId),
+      fetchAllZoneRestaurants(zoneId),
+      fetchAllZoneRiders(zoneId),
+    ]);
 
-  const summary = buildSummaryFromOrders(orders);
+  const orderPayload =
+    ordersResult.status === "fulfilled" && ordersResult.value
+      ? ordersResult.value
+      : { orders: [], totalOrders: 0 };
+
+  const monthOrders = Array.isArray(orderPayload.orders)
+    ? orderPayload.orders
+    : [];
+
+  const totalOrders =
+    Number(orderPayload.totalOrders || 0) > 0
+      ? Number(orderPayload.totalOrders)
+      : monthOrders.length;
+
+  const restaurants =
+    restaurantsResult.status === "fulfilled" &&
+    Array.isArray(restaurantsResult.value)
+      ? restaurantsResult.value
+      : [];
+
+  const riders =
+    ridersResult.status === "fulfilled" && Array.isArray(ridersResult.value)
+      ? ridersResult.value
+      : [];
+
+  const summary = buildSummaryFromOrders(monthOrders);
 
   return {
     zoneName: user?.zoneName || user?.name || `Zone ${zoneId}`,
     stats: normalizeStats({
       todayOrders: summary.today.count,
-      totalOrders: orders.length,
+      totalOrders,
       totalRiders: riders.length,
       totalRestaurants: restaurants.length,
     }),
     orderOverview: normalizeOrderOverview(summary.weekDaySales),
     revenueOverview: normalizeRevenueOverview(summary.weekDaySales),
-    topRestaurants: normalizeTopRestaurants(restaurants, orders),
-    topRiders: normalizeTopRiders(riders, orders),
+    topRestaurants: normalizeTopRestaurants(restaurants, monthOrders),
+    topRiders: normalizeTopRiders(riders, monthOrders),
     salesSummary: normalizeSalesSummary(summary),
   };
 }

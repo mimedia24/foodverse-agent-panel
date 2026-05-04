@@ -264,7 +264,9 @@ function Riders() {
   const { data: ridersData = [], isLoading, refetch } = useQuery({
     queryKey: ["riders", user?.zoneId],
     queryFn: async () => {
-      const response = await api.post("/zone/rider-list?limit=100&page=1", {});
+      const response = await api.post("/zone/rider-list?limit=100&page=1", {
+        zoneId: user?.zoneId,
+      });
       const payload = response?.data;
       return Array.isArray(payload?.result)
         ? payload.result

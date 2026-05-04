@@ -164,28 +164,67 @@ function getOrderDate(order) {
   return null;
 }
 
+function pickLatLng(...sources) {
+  for (const source of sources) {
+    if (!source) continue;
+
+    const rawLat =
+      source.lat ??
+      source.latitude ??
+      source.Latitude ??
+      source.userLat ??
+      source.dropLat ??
+      source.deliveryLat ??
+      source.customerLat;
+
+    const rawLng =
+      source.lng ??
+      source.long ??
+      source.longitude ??
+      source.Longitude ??
+      source.userLng ??
+      source.userLong ??
+      source.dropLng ??
+      source.dropLong ??
+      source.deliveryLng ??
+      source.deliveryLong ??
+      source.customerLng ??
+      source.customerLong;
+
+    const lat = Number(rawLat);
+    const lng = Number(rawLng);
+
+    if (
+      Number.isFinite(lat) &&
+      Number.isFinite(lng) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180
+    ) {
+      return { lat, lng };
+    }
+  }
+
+  return null;
+}
+
 function getOrderCoords(order) {
-  const rawLat =
-    order?.coords?.lat ??
-    order?.coords?.latitude ??
-    order?.lat ??
-    order?.latitude;
-
-  const rawLng =
-    order?.coords?.long ??
-    order?.coords?.lng ??
-    order?.coords?.longitude ??
-    order?.long ??
-    order?.lng ??
-    order?.longitude;
-
-  const lat = Number(rawLat);
-  const lng = Number(rawLng);
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-
-  return { lat, lng };
+  return pickLatLng(
+    order?.coords,
+    order?.coordinate,
+    order?.coordinates,
+    order?.location,
+    order?.userLocation,
+    order?.customerLocation,
+    order?.dropLocation,
+    order?.dropLocationCoords,
+    order?.deliveryLocation,
+    order?.deliveryAddress,
+    order?.shippingAddress,
+    order?.address,
+    order
+  );
 }
 
 function createPinIcon(color) {

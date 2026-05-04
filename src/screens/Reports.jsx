@@ -181,36 +181,62 @@ const isCompletedOrder = (order) => {
 };
 
 async function fetchAllOrders(zoneId) {
-  const limit = 100;
-  const maxPages = 50;
+  const limit = 50;
+  const maxPages = 100;
   let page = 1;
   let rows = [];
   let totalCount = 0;
 
   while (page <= maxPages) {
-    const response = await api.post(
-      `/zone/order-list?page=${page}&limit=${limit}`,
-      { zoneId }
-    );
+    try {
+      const response = await api.post(
+        `/zone/order-list?page=${page}&limit=${limit}`,
+        { zoneId }
+      );
 
-    const payload = response?.data;
-    const chunk = Array.isArray(payload?.data) ? payload.data : [];
+      const payload = response?.data;
 
-    totalCount = Number(payload?.totalCount || totalCount || 0);
-    rows = [...rows, ...chunk];
+      const chunk = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.result)
+        ? payload.result
+        : Array.isArray(payload?.orders)
+        ? payload.orders
+        : [];
 
-    if (
-      !chunk.length ||
-      chunk.length < limit ||
-      (totalCount && rows.length >= totalCount)
-    ) {
+      totalCount = Number(
+        payload?.totalCount ||
+          payload?.count ||
+          payload?.total ||
+          payload?.data?.totalCount ||
+          payload?.result?.totalCount ||
+          totalCount ||
+          0
+      );
+
+      rows = [...rows, ...chunk];
+
+      if (!chunk.length) break;
+      if (chunk.length < limit) break;
+      if (totalCount && rows.length >= totalCount) break;
+
+      page += 1;
+    } catch (error) {
+      console.warn(
+        `Report order page ${page} failed. Loaded ${rows.length} orders so far.`,
+        error?.response?.data?.message || error?.message
+      );
       break;
     }
-
-    page += 1;
   }
 
-  return Array.from(new Map(rows.map((item) => [item._id, item])).values());
+  return Array.from(
+    new Map(
+      rows
+        .filter(Boolean)
+        .map((item, index) => [item?._id || item?.id || `order-${index}`, item])
+    ).values()
+  );
 }
 
 async function fetchAllRestaurants(zoneId) {
@@ -406,21 +432,19 @@ function Reports() {
   }, [restaurants]);
 
   const filteredOrders = useMemo(
-    () =>
-      orders.filter((order) => {
-        const parsed = parseOrderDate(
-          order?.orderDate || order?.createdAt || order?.updatedAt
-        );
+  () =>
+    orders.filter((order) => {
+      const parsed = parseOrderDate(
+        order?.orderDate || order?.createdAt || order?.updatedAt
+      );
 
-        if (!parsed) return false;
+      if (!parsed) return false;
 
-        const current = parsed.format("YYYY-MM-DD");
-        const isInDateRange = current >= startDate && current <= endDate;
-
-        return isInDateRange && isCompletedOrder(order);
-      }),
-    [orders, startDate, endDate]
-  );
+      const current = parsed.format("YYYY-MM-DD");
+      return current >= startDate && current <= endDate;
+    }),
+  [orders, startDate, endDate]
+);
 
   const selectedDiscounts = useMemo(
     () =>
