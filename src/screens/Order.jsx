@@ -41,14 +41,39 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const formatMoney = (value) => {
+  return `TK ${Math.round(toNumber(value)).toLocaleString("en-BD")}`;
+};
+
+const getItemUnitPrice = (item) => {
+  const offerPrice = toNumber(item?.offerPrice);
+
+  if (offerPrice > 0) {
+    return offerPrice;
+  }
+
+  const basedPrice = toNumber(item?.basedPrice);
+  const platformFee = toNumber(item?.plateformFee ?? item?.platformFee);
+  const discountRate = toNumber(item?.discountRate);
+
+  if (basedPrice > 0 || platformFee > 0) {
+    const sellingPrice = basedPrice + platformFee;
+    const discountAmount = (sellingPrice * discountRate) / 100;
+    return Math.max(0, sellingPrice - discountAmount);
+  }
+
+  const sellingPrice = toNumber(item?.sellingPrice);
+
+  if (sellingPrice > 0) {
+    return sellingPrice;
+  }
+
+  return 0;
+};
+
 const getItemsSellingTotal = (items = []) => {
   return items.reduce((acc, item) => {
-    const unitPrice =
-      toNumber(item?.sellingPrice) > 0
-        ? toNumber(item?.sellingPrice)
-        : toNumber(item?.offerPrice);
-
-    return acc + unitPrice * toNumber(item?.quantity || 1);
+    return acc + getItemUnitPrice(item) * toNumber(item?.quantity || 1);
   }, 0);
 };
 
@@ -63,15 +88,39 @@ const getAddonsTotal = (items = []) => {
 };
 
 const getUserDeliveryCharge = (record) => {
-  return toNumber(record?.deliveryAmount);
+  return toNumber(record?.deliveryAmount ?? record?.deliveryFee);
+};
+
+const getRiderTip = (record) => {
+  return toNumber(record?.tip ?? record?.riderTip ?? record?.riderTips);
+};
+
+const getVoucherAmount = (record) => {
+  return toNumber(record?.voucherAmount);
 };
 
 const getDisplayOrderTotal = (record) => {
+  const totalAfterVoucher = toNumber(record?.totalAfterVoucherApplied);
+  const totalAmount = toNumber(record?.totalAmount);
+
+  if (totalAfterVoucher > 0) {
+    return totalAfterVoucher;
+  }
+
+  if (totalAmount > 0) {
+    return totalAmount;
+  }
+
   const itemsTotal = getItemsSellingTotal(record?.items || []);
   const addonsTotal = getAddonsTotal(record?.items || []);
   const deliveryCharge = getUserDeliveryCharge(record);
+  const riderTip = getRiderTip(record);
+  const voucherAmount = getVoucherAmount(record);
 
-  return itemsTotal + addonsTotal + deliveryCharge;
+  return Math.max(
+    0,
+    itemsTotal + addonsTotal + deliveryCharge + riderTip - voucherAmount
+  );
 };
 
 const StatusBadge = ({ status }) => {
@@ -239,7 +288,7 @@ function Order() {
       width: 90,
       render: (id) => (
         <Text copyable={{ text: id }} className="text-[11px] text-slate-500">
-          #{id?.slice(-6)}
+          #{String(id || "")?.slice(-6)}
         </Text>
       ),
     },
@@ -264,7 +313,7 @@ function Order() {
       width: 90,
       render: (id) => (
         <Text copyable={{ text: id }} className="text-[11px] text-slate-500">
-          #{id?.slice(-6)}
+          #{String(id || "")?.slice(-6)}
         </Text>
       ),
     },
@@ -276,7 +325,7 @@ function Order() {
       render: (id) =>
         id ? (
           <Text copyable={{ text: id }} className="text-[11px] text-slate-500">
-            #{id?.slice(-6)}
+            #{String(id || "")?.slice(-6)}
           </Text>
         ) : (
           <Text type="secondary" className="text-[11px]">
@@ -361,29 +410,43 @@ function Order() {
         </div>
       ),
     },
-{
-  title: "AMOUNT",
-  key: "price",
-  width: 120,
-  render: (_, record) => {
-    const itemsTotal = getItemsSellingTotal(record?.items || []);
-    const addonsTotal = getAddonsTotal(record?.items || []);
-    const deliveryCharge = getUserDeliveryCharge(record);
-    const finalTotal = getDisplayOrderTotal(record);
+    {
+      title: "AMOUNT",
+      key: "price",
+      width: 135,
+      render: (_, record) => {
+        const deliveryCharge = getUserDeliveryCharge(record);
+        const riderTip = getRiderTip(record);
+        const voucherAmount = getVoucherAmount(record);
+        const finalTotal = getDisplayOrderTotal(record);
 
-    return (
-      <div className="rounded-xl bg-slate-50 px-2 py-2 border border-slate-100 leading-tight">
-        <div className="text-[9px] uppercase text-slate-400">Total</div>
-        <div className="text-[14px] font-bold text-emerald-600">
-          TK {finalTotal.toFixed(0)}
-        </div>
-        <div className="text-[10px] text-blue-500">
-          Delivery {deliveryCharge.toFixed(0)}
-        </div>
-      </div>
-    );
-  },
-},
+        return (
+          <div className="rounded-xl bg-slate-50 px-2 py-2 border border-slate-100 leading-tight">
+            <div className="text-[9px] uppercase text-slate-400">Total</div>
+
+            <div className="text-[14px] font-bold text-emerald-600">
+              {formatMoney(finalTotal)}
+            </div>
+
+            <div className="text-[10px] text-blue-500">
+              Delivery {deliveryCharge.toFixed(0)}
+            </div>
+
+            {riderTip > 0 ? (
+              <div className="text-[10px] text-slate-500">
+                Tip {riderTip.toFixed(0)}
+              </div>
+            ) : null}
+
+            {voucherAmount > 0 ? (
+              <div className="text-[10px] font-bold text-red-500">
+                Voucher -{voucherAmount.toFixed(0)}
+              </div>
+            ) : null}
+          </div>
+        );
+      },
+    },
     {
       title: "MAP",
       key: "logistics",
