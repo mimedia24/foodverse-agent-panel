@@ -18,6 +18,7 @@ import {
   Bike,
   UtensilsCrossed,
   HandCoins,
+  Gift,
 } from "lucide-react";
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
@@ -97,6 +98,14 @@ const getOrderRestaurantName = (order) =>
   order?.restaurant?.restaurantName ||
   "Unknown Restaurant";
 
+const getOrderCustomerName = (order) =>
+  order?.userName ||
+  order?.customerName ||
+  order?.userId?.name ||
+  order?.userId?.fullName ||
+  order?.customer?.name ||
+  "N/A";
+
 const getOrderMetrics = (order) => {
   const items = Array.isArray(order?.items) ? order.items : [];
 
@@ -150,6 +159,67 @@ const getOrderMetrics = (order) => {
     deliveryFee,
     deliveryProfitAuto: deliveryFee - riderFee,
     riderTips: num(order?.riderTips ?? order?.tipAmount ?? order?.tip),
+  };
+};
+
+const getOrderVoucherInfo = (order) => {
+  const voucherObj =
+    order?.voucher || order?.coupon || order?.voucherId || order?.couponId || {};
+
+  const code = String(
+    order?.voucherCode ||
+      order?.couponCode ||
+      order?.promoCode ||
+      order?.promotionCode ||
+      voucherObj?.code ||
+      voucherObj?.couponCode ||
+      voucherObj?.voucherCode ||
+      ""
+  ).trim();
+
+  const name = String(
+    voucherObj?.name ||
+      voucherObj?.title ||
+      order?.voucherName ||
+      order?.couponName ||
+      code ||
+      "Voucher"
+  ).trim();
+
+  const amount = num(
+    order?.voucherExpense ??
+      order?.voucherDiscount ??
+      order?.voucherAmount ??
+      order?.couponDiscount ??
+      order?.couponAmount ??
+      order?.promoDiscount ??
+      order?.promoAmount ??
+      order?.discountByVoucher ??
+      order?.discountByCoupon ??
+      order?.voucherAppliedAmount ??
+      voucherObj?.amount ??
+      voucherObj?.discountAmount ??
+      voucherObj?.discount ??
+      0
+  );
+
+  const applied = Boolean(
+    amount > 0 ||
+      code ||
+      order?.isVoucherApplied ||
+      order?.voucherApplied ||
+      order?.couponApplied ||
+      order?.voucherId ||
+      order?.couponId ||
+      order?.voucher ||
+      order?.coupon
+  );
+
+  return {
+    applied,
+    amount,
+    code: code || "N/A",
+    name: name || "Voucher",
   };
 };
 
@@ -306,6 +376,124 @@ async function fetchManualDiscountRequests(zoneId, startDate, endDate) {
     : [];
 }
 
+
+const normalizeText = (value) => String(value || "").trim().toLowerCase();
+
+const getZoneIdFromObject = (zone) =>
+  zone?.zoneId ||
+  zone?.zoneID ||
+  zone?.zone_id ||
+  zone?.id ||
+  zone?._id ||
+  zone?.value ||
+  zone?.sl ||
+  zone?.serial;
+
+const getZoneNameFromZoneObject = (zone) =>
+  zone?.zoneName ||
+  zone?.zone_name ||
+  zone?.name ||
+  zone?.title ||
+  zone?.label ||
+  zone?.areaName ||
+  zone?.regionName ||
+  zone?.locationName ||
+  zone?.displayName ||
+  "";
+
+const getZoneNameFromUser = (user) =>
+  user?.zoneName ||
+  user?.zone_name ||
+  user?.zone?.zoneName ||
+  user?.zone?.zone_name ||
+  user?.zone?.name ||
+  user?.zone?.title ||
+  user?.zone?.label ||
+  user?.assignedZone?.zoneName ||
+  user?.assignedZone?.zone_name ||
+  user?.assignedZone?.name ||
+  user?.agentZone?.zoneName ||
+  user?.agentZone?.zone_name ||
+  user?.agentZone?.name ||
+  "";
+
+const getZoneNameFromLoadedData = (orders = [], restaurants = [], zoneId) => {
+  /*
+    IMPORTANT:
+    Do not read restaurant.name, user.name, agentName, or owner name as zone name.
+    Zone name will only come from explicit zone fields/objects.
+    If no explicit zone name is found, PDF/page will show Zone #ID.
+  */
+
+  const explicitSources = [
+    ...orders.map((order) => ({
+      zoneName: order?.zoneName || order?.zone_name,
+      zoneId: order?.zoneId || order?.zoneID || order?.zone_id,
+    })),
+
+    ...orders.map((order) => order?.zone).filter(Boolean),
+    ...orders.map((order) => order?.deliveryZone).filter(Boolean),
+    ...orders.map((order) => order?.serviceZone).filter(Boolean),
+    ...orders.map((order) => order?.restaurantId?.zone).filter(Boolean),
+
+    ...restaurants.map((restaurant) => ({
+      zoneName: restaurant?.zoneName || restaurant?.zone_name,
+      zoneId: restaurant?.zoneId || restaurant?.zoneID || restaurant?.zone_id,
+    })),
+
+    ...restaurants.map((restaurant) => restaurant?.zone).filter(Boolean),
+    ...restaurants.map((restaurant) => restaurant?.deliveryZone).filter(Boolean),
+    ...restaurants.map((restaurant) => restaurant?.serviceZone).filter(Boolean),
+  ];
+
+  for (const item of explicitSources) {
+    const itemZoneId = getZoneIdFromObject(item);
+    const name = String(getZoneNameFromZoneObject(item) || "").trim();
+
+    if (!name) continue;
+
+    // if both zone IDs exist, make sure the name belongs to current zone
+    if (zoneId && itemZoneId && String(itemZoneId) !== String(zoneId)) continue;
+
+    return name;
+  }
+
+  return "";
+};
+
+const makeZoneDisplayName = ({ user, orders, restaurants, zoneId }) => {
+  const userZoneName = String(getZoneNameFromUser(user) || "").trim();
+
+  const blockedNames = [
+    user?.name,
+    user?.managerName,
+    user?.agentName,
+    user?.fullName,
+    user?.restaurantName,
+    ...restaurants.map((restaurant) => restaurant?.name),
+    ...restaurants.map((restaurant) => restaurant?.restaurantName),
+    ...orders.map((order) => order?.restaurantName),
+    ...orders.map((order) => order?.restaurantId?.name),
+    ...orders.map((order) => order?.restaurantId?.restaurantName),
+  ]
+    .filter(Boolean)
+    .map(normalizeText);
+
+  if (userZoneName && !blockedNames.includes(normalizeText(userZoneName))) {
+    return userZoneName;
+  }
+
+  const dataZoneName = String(
+    getZoneNameFromLoadedData(orders, restaurants, zoneId) || ""
+  ).trim();
+
+  if (dataZoneName && !blockedNames.includes(normalizeText(dataZoneName))) {
+    return dataZoneName;
+  }
+
+  return zoneId ? `Zone #${zoneId}` : "Zone N/A";
+};
+
 const rangeBtn = (active) =>
   `rounded-full px-4 py-2 text-sm font-semibold transition ${
     active
@@ -318,15 +506,17 @@ const rowCard = "rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3";
 function Reports() {
   const { user } = useAuth();
 
-  const zoneId = user?.zoneId || user?.zoneID || user?.zone?._id || null;
+  const zoneId =
+    user?.zoneId ||
+    user?.zoneID ||
+    user?.zone?.zoneId ||
+    user?.zone?._id ||
+    user?.assignedZone?.zoneId ||
+    user?.assignedZone?._id ||
+    user?.agentZone?.zoneId ||
+    user?.agentZone?._id ||
+    null;
 
-  const zoneName =
-    user?.zoneName ||
-    user?.zone?.name ||
-    user?.zone?.zoneName ||
-    user?.name ||
-    user?.managerName ||
-    "Zone Agent";
 
   const zoneNumber =
     user?.zoneNumber ||
@@ -395,6 +585,17 @@ function Reports() {
     refetchOnWindowFocus: false,
   });
 
+  const zoneName = useMemo(
+    () =>
+      makeZoneDisplayName({
+        user,
+        orders,
+        restaurants,
+        zoneId,
+      }),
+    [user, orders, restaurants, zoneId]
+  );
+
   React.useEffect(() => {
     const now = dayjs();
 
@@ -421,9 +622,7 @@ function Reports() {
       map[String(restaurant?._id)] = {
         id: restaurant?._id,
         name:
-          restaurant?.name ||
-          restaurant?.restaurantName ||
-          "Unknown Restaurant",
+          restaurant?.name || restaurant?.restaurantName || "Unknown Restaurant",
         commissionRate: num(restaurant?.commissionRate),
       };
     });
@@ -432,19 +631,21 @@ function Reports() {
   }, [restaurants]);
 
   const filteredOrders = useMemo(
-  () =>
-    orders.filter((order) => {
-      const parsed = parseOrderDate(
-        order?.orderDate || order?.createdAt || order?.updatedAt
-      );
+    () =>
+      orders.filter((order) => {
+        const parsed = parseOrderDate(
+          order?.orderDate || order?.createdAt || order?.updatedAt
+        );
 
-      if (!parsed) return false;
+        if (!parsed) return false;
 
-      const current = parsed.format("YYYY-MM-DD");
-      return current >= startDate && current <= endDate;
-    }),
-  [orders, startDate, endDate]
-);
+        const current = parsed.format("YYYY-MM-DD");
+        const inSelectedDate = current >= startDate && current <= endDate;
+
+        return inSelectedDate && isCompletedOrder(order);
+      }),
+    [orders, startDate, endDate]
+  );
 
   const selectedDiscounts = useMemo(
     () =>
@@ -469,6 +670,7 @@ function Reports() {
 
     filteredOrders.forEach((order) => {
       const metrics = getOrderMetrics(order);
+      const voucher = getOrderVoucherInfo(order);
       const restaurantId = String(getOrderRestaurantId(order) || "unknown");
       const restaurantName = getOrderRestaurantName(order);
 
@@ -481,6 +683,9 @@ function Reports() {
           restaurantSale: 0,
           foodSale: 0,
           foodMargin: 0,
+          voucherAppliedOrders: 0,
+          voucherExpense: 0,
+          voucherCodes: new Set(),
           orderCount: 0,
           rate: num(savedRestaurant?.commissionRate),
         });
@@ -492,6 +697,12 @@ function Reports() {
       row.foodSale += metrics.foodSale;
       row.foodMargin += metrics.foodMargin;
       row.orderCount += 1;
+      row.voucherExpense += voucher.amount;
+
+      if (voucher.applied) {
+        row.voucherAppliedOrders += 1;
+        if (voucher.code && voucher.code !== "N/A") row.voucherCodes.add(voucher.code);
+      }
 
       const savedRestaurant = restaurantMap[restaurantId];
 
@@ -504,6 +715,7 @@ function Reports() {
     return Array.from(map.values())
       .map((row) => ({
         ...row,
+        voucherCodes: Array.from(row.voucherCodes || []),
         commissionProfit: (row.restaurantSale * num(row.rate)) / 100,
       }))
       .sort((a, b) => b.restaurantSale - a.restaurantSale);
@@ -513,6 +725,7 @@ function Reports() {
     const base = filteredOrders.reduce(
       (acc, order) => {
         const metrics = getOrderMetrics(order);
+        const voucher = getOrderVoucherInfo(order);
 
         acc.restaurantSale += metrics.restaurantSale;
         acc.foodSale += metrics.foodSale;
@@ -520,7 +733,21 @@ function Reports() {
         acc.deliveryFee += metrics.deliveryFee;
         acc.deliveryProfitAuto += metrics.deliveryProfitAuto;
         acc.riderTips += metrics.riderTips;
+        acc.voucherExpense += voucher.amount;
         acc.orderCount += 1;
+
+        if (voucher.applied) {
+          acc.voucherAppliedOrders += 1;
+          acc.voucherDetails.push({
+            orderId: order?._id || order?.id || "N/A",
+            date: order?.orderDate || order?.createdAt || order?.updatedAt,
+            restaurantName: getOrderRestaurantName(order),
+            customerName: getOrderCustomerName(order),
+            code: voucher.code,
+            name: voucher.name,
+            amount: voucher.amount,
+          });
+        }
 
         return acc;
       },
@@ -531,6 +758,9 @@ function Reports() {
         deliveryFee: 0,
         deliveryProfitAuto: 0,
         riderTips: 0,
+        voucherExpense: 0,
+        voucherAppliedOrders: 0,
+        voucherDetails: [],
         orderCount: 0,
       }
     );
@@ -545,7 +775,7 @@ function Reports() {
     const grossProfit =
       restaurantCommissionProfit + base.foodMargin + deliveryProfit;
 
-    const netProfit = grossProfit - discountTotal;
+    const netProfit = grossProfit - discountTotal - base.voucherExpense;
 
     return {
       ...base,
@@ -577,17 +807,22 @@ function Reports() {
           foodSale: 0,
           foodMargin: 0,
           deliveryProfitAuto: 0,
+          voucherExpense: 0,
+          voucherAppliedOrders: 0,
         });
       }
 
       const row = dates.get(key);
       const metrics = getOrderMetrics(order);
+      const voucher = getOrderVoucherInfo(order);
 
       row.orders.push(order);
       row.restaurantSale += metrics.restaurantSale;
       row.foodSale += metrics.foodSale;
       row.foodMargin += metrics.foodMargin;
       row.deliveryProfitAuto += metrics.deliveryProfitAuto;
+      row.voucherExpense += voucher.amount;
+      if (voucher.applied) row.voucherAppliedOrders += 1;
     });
 
     return Array.from(dates.values())
@@ -612,9 +847,15 @@ function Reports() {
           restaurantSale: row.restaurantSale,
           foodSale: row.foodSale,
           deliveryProfit,
+          voucherExpense: row.voucherExpense,
+          voucherAppliedOrders: row.voucherAppliedOrders,
           manualDiscount,
           netProfit:
-            commissionProfit + row.foodMargin + deliveryProfit - manualDiscount,
+            commissionProfit +
+            row.foodMargin +
+            deliveryProfit -
+            manualDiscount -
+            row.voucherExpense,
         };
       })
       .sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -687,6 +928,9 @@ function Reports() {
         `Restaurant Sale: ${money(report.restaurantSale)}`,
         `Delivery Fee: ${money(report.deliveryFee)}`,
         `Delivery Profit: ${signedMoney(report.deliveryProfit)}`,
+        `Voucher Expense: ${
+          report.voucherExpense > 0 ? minusMoney(report.voucherExpense) : money(0)
+        } (${report.voucherAppliedOrders || 0} orders)`,
         `Restaurant Commission Profit: ${signedMoney(
           report.restaurantCommissionProfit
         )}`,
@@ -731,15 +975,28 @@ function Reports() {
       return "neutral";
     };
 
+    const voucherRowsHtml = (report.voucherDetails || [])
+      .map(
+        (item) => `
+          <tr>
+            <td>${item.orderId}</td>
+            <td>${item.date ? dayjs(item.date).format("DD MMM YYYY") : "N/A"}</td>
+            <td>${item.restaurantName || "Unknown Restaurant"}</td>
+            <td>${item.customerName || "N/A"}</td>
+            <td>${item.code || "N/A"}</td>
+            <td>${item.name || "Voucher"}</td>
+            <td class="negative">${minusMoney(item.amount)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
     const html = `
       <html>
         <head>
           <title>Food Verse Agent Report</title>
           <style>
-            * {
-              box-sizing: border-box;
-            }
-
+            * { box-sizing: border-box; }
             body {
               margin: 0;
               font-family: Arial, sans-serif;
@@ -747,9 +1004,8 @@ function Reports() {
               background: #eef4ff;
               padding: 24px;
             }
-
             .page {
-              max-width: 980px;
+              max-width: 1080px;
               margin: 0 auto;
               border-radius: 28px;
               overflow: hidden;
@@ -757,14 +1013,11 @@ function Reports() {
               border: 1px solid #dbeafe;
               box-shadow: 0 24px 70px rgba(15, 23, 42, 0.15);
             }
-
             .hero {
               background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 55%, #06b6d4 100%);
               color: #ffffff;
               padding: 32px;
-              position: relative;
             }
-
             .badge {
               display: inline-block;
               border-radius: 999px;
@@ -776,33 +1029,20 @@ function Reports() {
               background: rgba(255,255,255,0.16);
               border: 1px solid rgba(255,255,255,0.25);
             }
-
-            h1 {
-              margin: 14px 0 6px;
-              font-size: 34px;
-              line-height: 1.1;
-            }
-
-            .subtitle {
-              margin: 0;
-              font-size: 13px;
-              color: rgba(255,255,255,0.82);
-            }
-
+            h1 { margin: 14px 0 6px; font-size: 34px; line-height: 1.1; }
+            .subtitle { margin: 0; font-size: 13px; color: rgba(255,255,255,0.82); }
             .meta-grid {
               display: grid;
               grid-template-columns: repeat(3, 1fr);
               gap: 12px;
               margin-top: 24px;
             }
-
             .meta-card {
               background: rgba(255,255,255,0.13);
               border: 1px solid rgba(255,255,255,0.22);
               border-radius: 18px;
               padding: 14px;
             }
-
             .meta-label {
               font-size: 10px;
               text-transform: uppercase;
@@ -810,58 +1050,29 @@ function Reports() {
               color: rgba(255,255,255,0.72);
               margin-bottom: 6px;
             }
-
-            .meta-value {
-              font-size: 15px;
-              font-weight: 800;
-              color: #ffffff;
-            }
-
-            .content {
-              padding: 28px 32px 32px;
-            }
-
+            .meta-value { font-size: 15px; font-weight: 800; color: #ffffff; }
+            .content { padding: 28px 32px 32px; }
             .section-title {
               margin: 0 0 14px;
               font-size: 18px;
               font-weight: 900;
               color: #0f172a;
             }
-
             .summary-grid {
               display: grid;
               grid-template-columns: repeat(3, 1fr);
               gap: 14px;
             }
-
             .card {
               border-radius: 20px;
               padding: 16px;
               border: 1px solid #e2e8f0;
               background: linear-gradient(180deg, #ffffff, #f8fafc);
             }
-
-            .card.blue {
-              background: linear-gradient(135deg, #eff6ff, #dbeafe);
-              border-color: #bfdbfe;
-            }
-
-            .card.green {
-              background: linear-gradient(135deg, #ecfdf5, #d1fae5);
-              border-color: #a7f3d0;
-            }
-
-            .card.red {
-              background: linear-gradient(135deg, #fff1f2, #ffe4e6);
-              border-color: #fecdd3;
-            }
-
-            .card.dark {
-              background: linear-gradient(135deg, #0f172a, #1e293b);
-              border-color: #334155;
-              color: #ffffff;
-            }
-
+            .card.blue { background: linear-gradient(135deg, #eff6ff, #dbeafe); border-color: #bfdbfe; }
+            .card.green { background: linear-gradient(135deg, #ecfdf5, #d1fae5); border-color: #a7f3d0; }
+            .card.red { background: linear-gradient(135deg, #fff1f2, #ffe4e6); border-color: #fecdd3; }
+            .card.dark { background: linear-gradient(135deg, #0f172a, #1e293b); border-color: #334155; color: #ffffff; }
             .card-label {
               font-size: 11px;
               font-weight: 800;
@@ -870,37 +1081,38 @@ function Reports() {
               color: #64748b;
               margin-bottom: 8px;
             }
-
-            .card.dark .card-label {
-              color: #cbd5e1;
+            .card.dark .card-label { color: #cbd5e1; }
+            .card-value { font-size: 22px; font-weight: 900; color: #0f172a; }
+            .card-value.positive, .positive { color: #047857; }
+            .card-value.negative, .negative { color: #dc2626; }
+            .card-value.neutral, .neutral { color: #334155; }
+            .card.dark .card-value.positive { color: #86efac; }
+            .card.dark .card-value.negative { color: #fca5a5; }
+            .table-wrap {
+              margin-top: 24px;
+              overflow: hidden;
+              border: 1px solid #e2e8f0;
+              border-radius: 18px;
             }
-
-            .card-value {
-              font-size: 22px;
-              font-weight: 900;
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th {
+              text-align: left;
+              background: #f8fafc;
+              color: #64748b;
+              text-transform: uppercase;
+              letter-spacing: 0.08em;
+              font-size: 10px;
+              padding: 10px;
+              border-bottom: 1px solid #e2e8f0;
+            }
+            td {
+              padding: 10px;
+              border-bottom: 1px solid #e2e8f0;
               color: #0f172a;
+              font-weight: 600;
             }
-
-            .card-value.positive {
-              color: #047857;
-            }
-
-            .card-value.negative {
-              color: #dc2626;
-            }
-
-            .card-value.neutral {
-              color: #334155;
-            }
-
-            .card.dark .card-value.positive {
-              color: #86efac;
-            }
-
-            .card.dark .card-value.negative {
-              color: #fca5a5;
-            }
-
+            tr:last-child td { border-bottom: 0; }
+            .empty-row { text-align: center; color: #64748b; padding: 18px; }
             .footer {
               margin-top: 28px;
               padding-top: 16px;
@@ -911,145 +1123,69 @@ function Reports() {
               font-size: 11px;
               color: #64748b;
             }
-
             @media print {
-              body {
-                background: #ffffff;
-                padding: 0;
-              }
-
-              .page {
-                box-shadow: none;
-                border-radius: 0;
-                max-width: none;
-                border: none;
-              }
-
-              .hero {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-              }
-
-              .card,
-              .meta-card {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-              }
+              body { background: #ffffff; padding: 0; }
+              .page { box-shadow: none; border-radius: 0; max-width: none; border: none; }
+              .hero, .card, .meta-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             }
           </style>
         </head>
-
         <body>
           <div class="page">
             <div class="hero">
               <span class="badge">Food Verse Agent Report</span>
               <h1>Agent Report</h1>
-              <p class="subtitle">Only completed/successful orders are counted. Approved manual discounts are applied.</p>
-
+              <p class="subtitle">Only completed/successful orders are counted. Voucher expenses and approved manual discounts are applied.</p>
               <div class="meta-grid">
-                <div class="meta-card">
-                  <div class="meta-label">Zone Name</div>
-                  <div class="meta-value">${zoneName}</div>
-                </div>
-
-                <div class="meta-card">
-                  <div class="meta-label">Zone ID</div>
-                  <div class="meta-value">${zoneId || "N/A"}</div>
-                </div>
-
-                <div class="meta-card">
-                  <div class="meta-label">Zone Number</div>
-                  <div class="meta-value">${zoneNumber}</div>
-                </div>
-
-                <div class="meta-card">
-                  <div class="meta-label">Report Period</div>
-                  <div class="meta-value">${periodText}</div>
-                </div>
-
-                <div class="meta-card">
-                  <div class="meta-label">Generated At</div>
-                  <div class="meta-value">${generatedAt}</div>
-                </div>
-
-                <div class="meta-card">
-                  <div class="meta-label">Completed Orders</div>
-                  <div class="meta-value">${report.orderCount}</div>
-                </div>
+                <div class="meta-card"><div class="meta-label">Zone Name</div><div class="meta-value">${zoneName}</div></div>
+                <div class="meta-card"><div class="meta-label">Zone ID</div><div class="meta-value">${zoneId || "N/A"}</div></div>
+                <div class="meta-card"><div class="meta-label">Zone Number</div><div class="meta-value">${zoneNumber}</div></div>
+                <div class="meta-card"><div class="meta-label">Report Period</div><div class="meta-value">${periodText}</div></div>
+                <div class="meta-card"><div class="meta-label">Generated At</div><div class="meta-value">${generatedAt}</div></div>
+                <div class="meta-card"><div class="meta-label">Completed Orders</div><div class="meta-value">${report.orderCount}</div></div>
               </div>
             </div>
-
             <div class="content">
               <h2 class="section-title">Financial Summary</h2>
-
               <div class="summary-grid">
-                <div class="card blue">
-                  <div class="card-label">Food Sale</div>
-                  <div class="card-value positive">${money(report.foodSale)}</div>
-                </div>
+                <div class="card blue"><div class="card-label">Food Sale</div><div class="card-value positive">${money(report.foodSale)}</div></div>
+                <div class="card blue"><div class="card-label">Restaurant Sale</div><div class="card-value positive">${money(report.restaurantSale)}</div></div>
+                <div class="card green"><div class="card-label">Delivery Fee</div><div class="card-value positive">${money(report.deliveryFee)}</div></div>
+                <div class="card ${num(report.deliveryProfit) < 0 ? "red" : "green"}"><div class="card-label">Delivery Profit</div><div class="card-value ${pdfValueClass(report.deliveryProfit)}">${signedMoney(report.deliveryProfit)}</div></div>
+                <div class="card red"><div class="card-label">Voucher Expense</div><div class="card-value negative">${report.voucherExpense > 0 ? minusMoney(report.voucherExpense) : money(0)}</div></div>
+                <div class="card green"><div class="card-label">Restaurant Commission</div><div class="card-value positive">${signedMoney(report.restaurantCommissionProfit)}</div></div>
+                <div class="card green"><div class="card-label">Food Sell Margin</div><div class="card-value positive">${signedMoney(report.foodMargin)}</div></div>
+                <div class="card red"><div class="card-label">Approved Manual Discount</div><div class="card-value negative">${report.manualDiscount > 0 ? minusMoney(report.manualDiscount) : money(0)}</div></div>
+                <div class="card dark"><div class="card-label">Gross Profit</div><div class="card-value ${pdfValueClass(report.grossProfit)}">${signedMoney(report.grossProfit)}</div></div>
+                <div class="card dark"><div class="card-label">Net Profit</div><div class="card-value ${pdfValueClass(report.netProfit)}">${signedMoney(report.netProfit)}</div></div>
+              </div>
 
-                <div class="card blue">
-                  <div class="card-label">Restaurant Sale</div>
-                  <div class="card-value positive">${money(
-                    report.restaurantSale
-                  )}</div>
-                </div>
-
-                <div class="card green">
-                  <div class="card-label">Delivery Fee</div>
-                  <div class="card-value positive">${money(report.deliveryFee)}</div>
-                </div>
-
-                <div class="card ${num(report.deliveryProfit) < 0 ? "red" : "green"}">
-                  <div class="card-label">Delivery Profit</div>
-                  <div class="card-value ${pdfValueClass(report.deliveryProfit)}">${signedMoney(
-                    report.deliveryProfit
-                  )}</div>
-                </div>
-
-                <div class="card green">
-                  <div class="card-label">Restaurant Commission</div>
-                  <div class="card-value positive">${signedMoney(
-                    report.restaurantCommissionProfit
-                  )}</div>
-                </div>
-
-                <div class="card green">
-                  <div class="card-label">Food Sell Margin</div>
-                  <div class="card-value positive">${signedMoney(report.foodMargin)}</div>
-                </div>
-
-                <div class="card red">
-                  <div class="card-label">Approved Manual Discount</div>
-                  <div class="card-value negative">${
-                    report.manualDiscount > 0
-                      ? minusMoney(report.manualDiscount)
-                      : money(0)
-                  }</div>
-                </div>
-
-                <div class="card dark">
-                  <div class="card-label">Gross Profit</div>
-                  <div class="card-value ${pdfValueClass(report.grossProfit)}">${signedMoney(
-                    report.grossProfit
-                  )}</div>
-                </div>
-
-                <div class="card dark">
-                  <div class="card-label">Net Profit</div>
-                  <div class="card-value ${pdfValueClass(report.netProfit)}">${signedMoney(
-                    report.netProfit
-                  )}</div>
-                </div>
+              <h2 class="section-title" style="margin-top:28px;">Voucher Details</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Order ID</th>
+                      <th>Date</th>
+                      <th>Restaurant</th>
+                      <th>Customer</th>
+                      <th>Code</th>
+                      <th>Voucher</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${voucherRowsHtml || `<tr><td colspan="7" class="empty-row">No voucher applied completed order found in this report period.</td></tr>`}
+                  </tbody>
+                </table>
               </div>
 
               <div class="footer">
                 <div>Food Verse Delivery • Agent Report</div>
-                <div>Generated from completed orders and approved discounts only</div>
+                <div>Generated from completed orders, voucher expenses and approved discounts only</div>
               </div>
             </div>
           </div>
-
           <script>window.onload = () => window.print();</script>
         </body>
       </html>
@@ -1066,20 +1202,21 @@ function Reports() {
 
   const sellLines = [
     { icon: UtensilsCrossed, label: "Food Sell", value: money(report.foodSale) },
-    {
-      icon: Store,
-      label: "Restaurant Sell",
-      value: money(report.restaurantSale),
-    },
+    { icon: Store, label: "Restaurant Sell", value: money(report.restaurantSale) },
     { icon: Bike, label: "Delivery Fee", value: money(report.deliveryFee) },
     {
       icon: HandCoins,
       label: "Delivery Profit",
       value: signedMoney(report.deliveryProfit),
-      valueClass:
-        report.deliveryProfit < 0 ? "text-red-200" : "text-emerald-200",
+      valueClass: report.deliveryProfit < 0 ? "text-red-200" : "text-emerald-200",
     },
     { icon: Coins, label: "Rider Tips", value: money(report.riderTips) },
+    {
+      icon: Gift,
+      label: `Voucher Expense (${report.voucherAppliedOrders || 0})`,
+      value: report.voucherExpense > 0 ? minusMoney(report.voucherExpense) : money(0),
+      valueClass: "text-red-100",
+    },
   ];
 
   const profitLines = [
@@ -1100,6 +1237,13 @@ function Reports() {
       label: "Delivery Profit",
       value: signedMoney(report.deliveryProfit),
       valueClass: valueColorClass(report.deliveryProfit),
+    },
+    {
+      icon: Gift,
+      label: `Voucher Expense (${report.voucherAppliedOrders || 0} orders)`,
+      value: report.voucherExpense > 0 ? minusMoney(report.voucherExpense) : money(0),
+      danger: true,
+      valueClass: "text-red-300",
     },
     {
       icon: Trash2,
@@ -1125,15 +1269,11 @@ function Reports() {
               <p className="text-[11px] uppercase tracking-[0.28em] text-blue-600">
                 Food Verse Agent Report Control
               </p>
-
               <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 md:text-4xl">
                 Profit Reports
               </h1>
-
               <p className="mt-2 max-w-3xl text-sm text-slate-500">
-                Only completed/successful orders are counted. Profit =
-                restaurant commission + food sell margin + delivery profit -
-                approved manual discount.
+                Only completed/successful orders are counted. Profit = restaurant commission + food sell margin + delivery profit - voucher expense - approved manual discount.
               </p>
             </div>
 
@@ -1191,10 +1331,8 @@ function Reports() {
               <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 Start Date
               </label>
-
               <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
                 <CalendarDays size={16} className="text-slate-400" />
-
                 <input
                   type="date"
                   value={startDate}
@@ -1211,10 +1349,8 @@ function Reports() {
               <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 End Date
               </label>
-
               <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
                 <CalendarDays size={16} className="text-slate-400" />
-
                 <input
                   type="date"
                   value={endDate}
@@ -1231,11 +1367,9 @@ function Reports() {
               <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 Completed Orders
               </label>
-
               <div className="mt-3 text-3xl font-black text-slate-950">
                 {report.orderCount}
               </div>
-
               <p className="mt-1 text-xs text-slate-500">
                 Only completed/successful orders in this range
               </p>
@@ -1248,16 +1382,12 @@ function Reports() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold opacity-90">
-                  {rangeType === "today"
-                    ? "Today's Completed Sell"
-                    : "Selected Range Completed Sell"}
+                  {rangeType === "today" ? "Today's Completed Sell" : "Selected Range Completed Sell"}
                 </p>
-
                 <h3 className="mt-2 text-4xl font-black tracking-tight">
                   {money(report.foodSale)}
                 </h3>
               </div>
-
               <div className="rounded-2xl bg-white/15 p-3">
                 <BadgeDollarSign size={22} />
               </div>
@@ -1265,19 +1395,11 @@ function Reports() {
 
             <div className="mt-5 space-y-3">
               {sellLines.map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3"
-                >
+                <div key={item.label} className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm text-white/90">
                     <item.icon size={16} /> {item.label}
                   </div>
-
-                  <div
-                    className={`text-sm font-bold ${
-                      item.valueClass || "text-white"
-                    }`}
-                  >
+                  <div className={`text-sm font-bold ${item.valueClass || "text-white"}`}>
                     {item.value}
                   </div>
                 </div>
@@ -1288,23 +1410,14 @@ function Reports() {
           <div className="rounded-[30px] bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 p-5 text-white shadow-lg">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold opacity-90">
-                  Profit Summary
-                </p>
-
-                <h3
-                  className={`mt-2 text-4xl font-black tracking-tight ${
-                    report.netProfit < 0 ? "text-red-300" : "text-emerald-300"
-                  }`}
-                >
+                <p className="text-sm font-semibold opacity-90">Profit Summary</p>
+                <h3 className={`mt-2 text-4xl font-black tracking-tight ${report.netProfit < 0 ? "text-red-300" : "text-emerald-300"}`}>
                   {signedMoney(report.netProfit)}
                 </h3>
-
                 <p className="mt-2 text-xs opacity-80">
-                  Completed orders only + approved discount only
+                  Completed orders + voucher expense + approved discount
                 </p>
               </div>
-
               <div className="rounded-2xl bg-white/15 p-3">
                 <Coins size={22} />
               </div>
@@ -1312,19 +1425,11 @@ function Reports() {
 
             <div className="mt-5 space-y-3">
               {profitLines.map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3"
-                >
+                <div key={item.label} className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm text-white/90">
                     <item.icon size={16} /> {item.label}
                   </div>
-
-                  <div
-                    className={`text-sm font-bold ${
-                      item.valueClass || (item.danger ? "text-red-200" : "")
-                    }`}
-                  >
+                  <div className={`text-sm font-bold ${item.valueClass || (item.danger ? "text-red-200" : "")}`}>
                     {item.value}
                   </div>
                 </div>
@@ -1335,10 +1440,7 @@ function Reports() {
 
         <div className="grid gap-4 xl:grid-cols-12">
           <div className="xl:col-span-8 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-            <h2 className="text-xl font-black text-slate-950">
-              Daily Breakdown
-            </h2>
-
+            <h2 className="text-xl font-black text-slate-950">Daily Breakdown</h2>
             <p className="mt-1 text-sm text-slate-500">
               Daily profit summary for completed/successful orders only
             </p>
@@ -1352,67 +1454,41 @@ function Reports() {
                     <th className="px-3 py-3">Restaurant Sale</th>
                     <th className="px-3 py-3">Food Sale</th>
                     <th className="px-3 py-3">Delivery Profit</th>
+                    <th className="px-3 py-3">Voucher Expense</th>
                     <th className="px-3 py-3">Approved Discount</th>
                     <th className="px-3 py-3">Net Profit</th>
                   </tr>
                 </thead>
-
                 <tbody>
                   {dailyRows.length ? (
                     dailyRows.map((row) => (
-                      <tr
-                        key={row.date}
-                        className="border-b border-slate-100 last:border-b-0"
-                      >
+                      <tr key={row.date} className="border-b border-slate-100 last:border-b-0">
                         <td className="px-3 py-3 font-semibold text-slate-800">
                           {dayjs(row.date).format("DD MMM YYYY")}
                         </td>
-
-                        <td className="px-3 py-3 text-slate-600">
-                          {row.orderCount}
-                        </td>
-
-                        <td className="px-3 py-3 text-emerald-600 font-semibold">
-                          {money(row.restaurantSale)}
-                        </td>
-
-                        <td className="px-3 py-3 text-emerald-600 font-semibold">
-                          {money(row.foodSale)}
-                        </td>
-
-                        <td
-                          className={`px-3 py-3 font-semibold ${
-                            row.deliveryProfit < 0
-                              ? "text-red-500"
-                              : "text-emerald-600"
-                          }`}
-                        >
+                        <td className="px-3 py-3 text-slate-600">{row.orderCount}</td>
+                        <td className="px-3 py-3 text-emerald-600 font-semibold">{money(row.restaurantSale)}</td>
+                        <td className="px-3 py-3 text-emerald-600 font-semibold">{money(row.foodSale)}</td>
+                        <td className={`px-3 py-3 font-semibold ${row.deliveryProfit < 0 ? "text-red-500" : "text-emerald-600"}`}>
                           {signedMoney(row.deliveryProfit)}
                         </td>
-
                         <td className="px-3 py-3 text-red-500 font-semibold">
-                          {row.manualDiscount > 0
-                            ? minusMoney(row.manualDiscount)
-                            : money(0)}
+                          {row.voucherExpense > 0 ? minusMoney(row.voucherExpense) : money(0)}
+                          {row.voucherAppliedOrders > 0 ? (
+                            <div className="text-[10px] text-red-400">{row.voucherAppliedOrders} orders</div>
+                          ) : null}
                         </td>
-
-                        <td
-                          className={`px-3 py-3 font-bold ${
-                            row.netProfit < 0
-                              ? "text-red-600"
-                              : "text-emerald-600"
-                          }`}
-                        >
+                        <td className="px-3 py-3 text-red-500 font-semibold">
+                          {row.manualDiscount > 0 ? minusMoney(row.manualDiscount) : money(0)}
+                        </td>
+                        <td className={`px-3 py-3 font-bold ${row.netProfit < 0 ? "text-red-600" : "text-emerald-600"}`}>
                           {signedMoney(row.netProfit)}
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td
-                        colSpan={7}
-                        className="px-3 py-8 text-center text-slate-500"
-                      >
+                      <td colSpan={8} className="px-3 py-8 text-center text-slate-500">
                         No completed/successful orders found in this range.
                       </td>
                     </tr>
@@ -1424,15 +1500,10 @@ function Reports() {
 
           <div className="xl:col-span-4 space-y-4">
             <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-              <h2 className="text-xl font-black text-slate-950">
-                Manual Discount Request
-              </h2>
-
+              <h2 className="text-xl font-black text-slate-950">Manual Discount Request</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Send discount request to main admin. Only approved discount will
-                affect report.
+                Send discount request to main admin. Only approved discount will affect report.
               </p>
-
               <div className="mt-4 space-y-3">
                 <input
                   type="number"
@@ -1441,7 +1512,6 @@ function Reports() {
                   placeholder="Discount amount"
                   className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none"
                 />
-
                 <input
                   type="text"
                   value={discountNote}
@@ -1449,7 +1519,6 @@ function Reports() {
                   placeholder="Reason / note required"
                   className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none"
                 />
-
                 <button
                   onClick={addDiscount}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
@@ -1461,35 +1530,18 @@ function Reports() {
               <div className="mt-4 space-y-2">
                 {manualDiscountRequests.length ? (
                   manualDiscountRequests.map((entry) => (
-                    <div
-                      key={entry._id}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
-                    >
+                    <div key={entry._id} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-slate-800">
-                            {money(entry.amount)}
-                          </p>
-
+                          <p className="text-sm font-semibold text-slate-800">{money(entry.amount)}</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {entry.note || "Manual discount"} •{" "}
-                            {dayjs(entry.date).format("DD MMM YYYY")}
+                            {entry.note || "Manual discount"} • {dayjs(entry.date).format("DD MMM YYYY")}
                           </p>
                         </div>
-
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            entry.status === "approved"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : entry.status === "rejected"
-                              ? "bg-red-100 text-red-700"
-                              : "bg-amber-100 text-amber-700"
-                          }`}
-                        >
+                        <span className={`rounded-full px-3 py-1 text-xs font-bold ${entry.status === "approved" ? "bg-emerald-100 text-emerald-700" : entry.status === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
                           {entry.status}
                         </span>
                       </div>
-
                       {entry.reviewNote ? (
                         <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs text-slate-500">
                           Admin note: {entry.reviewNote}
@@ -1506,53 +1558,20 @@ function Reports() {
             </div>
 
             <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-              <h2 className="text-xl font-black text-slate-950">
-                Profit Formula
-              </h2>
-
+              <h2 className="text-xl font-black text-slate-950">Profit Formula</h2>
               <p className="mt-1 text-sm text-slate-500">
-                This final profit is calculated from completed orders and
-                approved discounts only.
+                This final profit is calculated from completed orders, voucher expenses and approved discounts only.
               </p>
-
               <div className="mt-4 space-y-3">
                 {[
-                  [
-                    "Restaurant Commission Profit",
-                    signedMoney(report.restaurantCommissionProfit),
-                    report.restaurantCommissionProfit < 0
-                      ? "text-red-500"
-                      : "text-emerald-600",
-                  ],
-                  [
-                    "Food Sell Margin",
-                    signedMoney(report.foodMargin),
-                    report.foodMargin < 0 ? "text-red-500" : "text-emerald-600",
-                  ],
-                  [
-                    "Delivery Profit",
-                    signedMoney(report.deliveryProfit),
-                    report.deliveryProfit < 0
-                      ? "text-red-500"
-                      : "text-emerald-600",
-                  ],
-                  [
-                    "Approved Manual Discount",
-                    report.manualDiscount > 0
-                      ? minusMoney(report.manualDiscount)
-                      : money(0),
-                    "text-red-500",
-                  ],
-                  [
-                    "Net Profit",
-                    signedMoney(report.netProfit),
-                    report.netProfit < 0 ? "text-red-600" : "text-emerald-600",
-                  ],
+                  ["Restaurant Commission Profit", signedMoney(report.restaurantCommissionProfit), report.restaurantCommissionProfit < 0 ? "text-red-500" : "text-emerald-600"],
+                  ["Food Sell Margin", signedMoney(report.foodMargin), report.foodMargin < 0 ? "text-red-500" : "text-emerald-600"],
+                  ["Delivery Profit", signedMoney(report.deliveryProfit), report.deliveryProfit < 0 ? "text-red-500" : "text-emerald-600"],
+                  ["Voucher Expense", report.voucherExpense > 0 ? minusMoney(report.voucherExpense) : money(0), "text-red-500"],
+                  ["Approved Manual Discount", report.manualDiscount > 0 ? minusMoney(report.manualDiscount) : money(0), "text-red-500"],
+                  ["Net Profit", signedMoney(report.netProfit), report.netProfit < 0 ? "text-red-600" : "text-emerald-600"],
                 ].map(([label, value, cls]) => (
-                  <div
-                    key={label}
-                    className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  >
+                  <div key={label} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                     <span className="text-sm text-slate-500">{label}</span>
                     <span className={`text-sm font-bold ${cls}`}>{value}</span>
                   </div>
@@ -1563,14 +1582,59 @@ function Reports() {
         </div>
 
         <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-          <h2 className="text-xl font-black text-slate-950">
-            Restaurant Commission Setup
-          </h2>
+          <h2 className="text-xl font-black text-slate-950">Voucher Details</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Voucher applied completed orders in this selected report range
+          </p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.18em] text-slate-400">
+                  <th className="px-3 py-3">Order ID</th>
+                  <th className="px-3 py-3">Date</th>
+                  <th className="px-3 py-3">Restaurant</th>
+                  <th className="px-3 py-3">Customer</th>
+                  <th className="px-3 py-3">Voucher Code</th>
+                  <th className="px-3 py-3">Voucher Name</th>
+                  <th className="px-3 py-3">Voucher Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.voucherDetails?.length ? (
+                  report.voucherDetails.map((item) => (
+                    <tr key={`${item.orderId}-${item.code}`} className="border-b border-slate-100 last:border-b-0">
+                      <td className="px-3 py-3 text-xs font-semibold text-blue-600">{item.orderId}</td>
+                      <td className="px-3 py-3 text-slate-600">
+                        {item.date ? dayjs(item.date).format("DD MMM YYYY") : "N/A"}
+                      </td>
+                      <td className="px-3 py-3 font-semibold text-slate-800">{item.restaurantName}</td>
+                      <td className="px-3 py-3 text-slate-600">{item.customerName}</td>
+                      <td className="px-3 py-3">
+                        <span className="inline-flex rounded-xl bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">
+                          {item.code || "N/A"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-slate-600">{item.name || "Voucher"}</td>
+                      <td className="px-3 py-3 font-bold text-red-500">{minusMoney(item.amount)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
+                      No voucher applied completed orders found in this range.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
+        <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+          <h2 className="text-xl font-black text-slate-950">Restaurant Commission Setup</h2>
           <p className="mt-1 text-sm text-slate-500">
             Auto loaded from main admin restaurant settings
           </p>
-
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -1580,44 +1644,35 @@ function Reports() {
                   <th className="px-3 py-3">Restaurant Sale</th>
                   <th className="px-3 py-3">Food Sale</th>
                   <th className="px-3 py-3">Food Margin</th>
+                  <th className="px-3 py-3">Voucher Orders</th>
+                  <th className="px-3 py-3">Voucher Expense</th>
                   <th className="px-3 py-3">Commission %</th>
                   <th className="px-3 py-3">Commission Profit</th>
                 </tr>
               </thead>
-
               <tbody>
                 {restaurantRows.length ? (
                   restaurantRows.map((row) => (
-                    <tr
-                      key={row.restaurantId}
-                      className="border-b border-slate-100 last:border-b-0"
-                    >
-                      <td className="px-3 py-3 font-semibold text-slate-800">
-                        {row.restaurantName}
-                      </td>
-
+                    <tr key={row.restaurantId} className="border-b border-slate-100 last:border-b-0">
+                      <td className="px-3 py-3 font-semibold text-slate-800">{row.restaurantName}</td>
+                      <td className="px-3 py-3 text-slate-600">{row.orderCount}</td>
+                      <td className="px-3 py-3 text-emerald-600 font-semibold">{money(row.restaurantSale)}</td>
+                      <td className="px-3 py-3 text-emerald-600 font-semibold">{money(row.foodSale)}</td>
+                      <td className="px-3 py-3 font-semibold text-emerald-600">{signedMoney(row.foodMargin)}</td>
                       <td className="px-3 py-3 text-slate-600">
-                        {row.orderCount}
+                        {row.voucherAppliedOrders || 0}
+                        {row.voucherCodes?.length ? (
+                          <div className="text-[10px] text-blue-500">{row.voucherCodes.join(", ")}</div>
+                        ) : null}
                       </td>
-
-                      <td className="px-3 py-3 text-emerald-600 font-semibold">
-                        {money(row.restaurantSale)}
+                      <td className="px-3 py-3 font-semibold text-red-500">
+                        {row.voucherExpense > 0 ? minusMoney(row.voucherExpense) : money(0)}
                       </td>
-
-                      <td className="px-3 py-3 text-emerald-600 font-semibold">
-                        {money(row.foodSale)}
-                      </td>
-
-                      <td className="px-3 py-3 font-semibold text-emerald-600">
-                        {signedMoney(row.foodMargin)}
-                      </td>
-
                       <td className="px-3 py-3">
                         <span className="inline-flex rounded-xl bg-slate-100 px-3 py-2 font-semibold text-slate-700">
                           {num(row.rate)}%
                         </span>
                       </td>
-
                       <td className="px-3 py-3 font-bold text-emerald-600">
                         {signedMoney(row.commissionProfit)}
                       </td>
@@ -1625,12 +1680,8 @@ function Reports() {
                   ))
                 ) : (
                   <tr>
-                    <td
-                      colSpan={7}
-                      className="px-3 py-8 text-center text-slate-500"
-                    >
-                      No completed/successful restaurant sales found in this
-                      range.
+                    <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
+                      No completed/successful restaurant sales found in this range.
                     </td>
                   </tr>
                 )}

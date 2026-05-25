@@ -39,19 +39,9 @@ const RIDER_STATUS_OPTIONS = [
   "banned",
 ];
 
-const SESSION_OPTIONS = [
-  "available",
-  "out for delivery",
-  "break",
-  "offline",
-];
+const SESSION_OPTIONS = ["available", "out for delivery", "break", "offline"];
 
-const PAYMENT_STATUS_OPTIONS = [
-  "Pending",
-  "Processing",
-  "Completed",
-  "Invalid",
-];
+const PAYMENT_STATUS_OPTIONS = ["Pending", "Processing", "Completed", "Invalid"];
 
 const num = (value) => {
   const n = Number(value || 0);
@@ -69,6 +59,42 @@ const formatDateTime = (value) => {
   return new Date(value).toLocaleString();
 };
 
+const normalizeId = (value) => {
+  if (!value) return "";
+  if (typeof value === "object") {
+    return String(value?._id || value?.id || value?.riderId || "");
+  }
+  return String(value);
+};
+
+const getListFromPayload = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.result)) return payload.result;
+  if (Array.isArray(payload?.withdraws)) return payload.withdraws;
+  if (Array.isArray(payload?.collections)) return payload.collections;
+  if (Array.isArray(payload?.list)) return payload.list;
+  if (Array.isArray(payload?.rows)) return payload.rows;
+  return [];
+};
+
+const uniqueById = (rows = []) => {
+  const map = new Map();
+
+  rows.filter(Boolean).forEach((item, index) => {
+    const key =
+      item?._id ||
+      item?.id ||
+      item?.paymentId ||
+      item?.transactionId ||
+      `${getPaymentRiderId(item)}-${item?.amount}-${item?.createdAt}-${index}`;
+
+    map.set(String(key), item);
+  });
+
+  return Array.from(map.values());
+};
+
 const getName = (rider) =>
   rider?.name || rider?.fullName || rider?.riderName || "Unnamed Rider";
 
@@ -81,7 +107,11 @@ const getAddress = (rider) => rider?.address || rider?.location || "N/A";
 
 const getImage = (rider) => {
   const file = rider?.profileImage || rider?.image || "";
+
   if (!file) return "";
+  if (String(file).startsWith("http")) return file;
+  if (String(file).startsWith("/uploads")) return `${image_uri}${file}`;
+
   return `${image_uri}${file}`;
 };
 
@@ -91,29 +121,209 @@ const getAccountStatus = (rider) =>
 const getSessionStatus = (rider) =>
   rider?.session || rider?.currentSession || "offline";
 
-const getCash = (rider) =>
-  num(rider?.cashCollection ?? rider?.cash ?? 0);
+const getCash = (rider) => num(rider?.cashCollection ?? rider?.cash ?? 0);
 
-const getEarning = (rider) =>
-  num(rider?.earning ?? 0);
+const getEarning = (rider) => num(rider?.earning ?? 0);
+
+const getZoneId = (item) => {
+  const value =
+    item?.zoneId ||
+    item?.zoneID ||
+    item?.zone_id ||
+    item?.zone?.zoneId ||
+    item?.zone?.id ||
+    item?.zone?._id ||
+    item?.assignedZone?.zoneId ||
+    item?.assignedZone?._id ||
+    item?.agentZone?.zoneId ||
+    item?.agentZone?._id;
+
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const getZoneName = (item) => {
+  const zoneId = getZoneId(item);
+
+  return (
+    item?.zoneName ||
+    item?.zone_name ||
+    item?.zone?.zoneName ||
+    item?.zone?.name ||
+    item?.assignedZone?.zoneName ||
+    item?.assignedZone?.name ||
+    item?.agentZone?.zoneName ||
+    item?.agentZone?.name ||
+    (zoneId ? `Zone #${zoneId}` : "Zone")
+  );
+};
 
 const getStatusColor = (status) => {
   const value = String(status || "").toLowerCase();
+
   if (value === "active") return "green";
   if (value === "busy") return "orange";
   if (value === "waiting for approved") return "blue";
   if (value === "banned") return "red";
+
   return "default";
 };
 
 const getSessionColor = (status) => {
   const value = String(status || "").toLowerCase();
+
   if (value === "available") return "green";
   if (value === "out for delivery") return "orange";
   if (value === "break") return "gold";
   if (value === "offline") return "red";
+
   return "default";
 };
+
+const getPaymentRiderId = (row) => {
+  return normalizeId(
+    row?.riderId ||
+      row?.rider ||
+      row?.riderInfo ||
+      row?.riderDetails ||
+      row?.userId ||
+      row?.user
+  );
+};
+
+const getPaymentRiderPhone = (row) => {
+  return (
+    row?.phone ||
+    row?.phoneNumber ||
+    row?.riderPhone ||
+    row?.riderId?.phoneNumber ||
+    row?.riderId?.phone ||
+    row?.rider?.phoneNumber ||
+    row?.rider?.phone ||
+    "N/A"
+  );
+};
+
+const getPaymentZoneId = (row) => {
+  const value =
+    row?.zoneId ||
+    row?.zoneID ||
+    row?.zone_id ||
+    row?.riderId?.zoneId ||
+    row?.riderId?.zoneID ||
+    row?.rider?.zoneId ||
+    row?.rider?.zoneID ||
+    row?.riderInfo?.zoneId ||
+    row?.riderDetails?.zoneId;
+
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const filterPaymentRowsByZoneRiders = (rows, zoneRiders, agentZoneId) => {
+  const allowedRiderIds = new Set(
+    (Array.isArray(zoneRiders) ? zoneRiders : [])
+      .map((rider) => normalizeId(rider?._id || rider?.id))
+      .filter(Boolean)
+  );
+
+  return (Array.isArray(rows) ? rows : []).filter((row) => {
+    const rowZoneId = getPaymentZoneId(row);
+
+    if (rowZoneId && Number(rowZoneId) === Number(agentZoneId)) {
+      return true;
+    }
+
+    const rowRiderId = getPaymentRiderId(row);
+
+    if (rowRiderId && allowedRiderIds.has(String(rowRiderId))) {
+      return true;
+    }
+
+    return false;
+  });
+};
+
+async function fetchPaginatedGet(urlBuilder, maxPages = 30) {
+  const limit = 100;
+  let page = 1;
+  let rows = [];
+
+  while (page <= maxPages) {
+    try {
+      const response = await api.get(urlBuilder(page, limit));
+
+      const chunk = getListFromPayload(response?.data);
+
+      rows = [...rows, ...chunk];
+
+      const total = Number(
+        response?.data?.total ||
+          response?.data?.totalCount ||
+          response?.data?.count ||
+          0
+      );
+
+      if (!chunk.length) break;
+      if (chunk.length < limit) break;
+      if (total && rows.length >= total) break;
+
+      page += 1;
+    } catch (error) {
+      break;
+    }
+  }
+
+  return rows;
+}
+
+async function fetchZoneRiders(zoneId) {
+  const limit = 100;
+  let page = 1;
+  let rows = [];
+
+  while (page <= 30) {
+    const response = await api.post(`/zone/rider-list?limit=${limit}&page=${page}`, {
+      zoneId,
+    });
+
+    const payload = response?.data;
+
+    const chunk = Array.isArray(payload?.result)
+      ? payload.result
+      : Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload?.riders)
+      ? payload.riders
+      : [];
+
+    rows = [...rows, ...chunk];
+
+    if (!chunk.length || chunk.length < limit) break;
+
+    page += 1;
+  }
+
+  return uniqueById(rows);
+}
+
+async function fetchWithdrawRows(zoneId) {
+  const rows = await fetchPaginatedGet(
+    (page, limit) =>
+      `/zone/payment/rider/withdraw-list?page=${page}&limit=${limit}&zoneId=${zoneId}`
+  );
+
+  return uniqueById(rows);
+}
+
+async function fetchCollectionRows(zoneId) {
+  const rows = await fetchPaginatedGet(
+    (page, limit) =>
+      `/zone/payment/rider/cashcollection-list?page=${page}&limit=${limit}&zoneId=${zoneId}`
+  );
+
+  return uniqueById(rows);
+}
 
 function InfoRow({ icon: Icon, value }) {
   return (
@@ -135,6 +345,8 @@ function RiderCard({
   const status = localStatus || getAccountStatus(rider);
   const currentSession = localSession || getSessionStatus(rider);
   const avatarSrc = getImage(rider);
+  const riderZoneId = getZoneId(rider);
+  const riderZoneName = getZoneName(rider);
 
   return (
     <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl">
@@ -153,6 +365,7 @@ function RiderCard({
               <h3 className="truncate text-xl font-black text-slate-900">
                 {getName(rider)}
               </h3>
+
               {rider?.isVerify ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-600">
                   <ShieldCheck size={12} />
@@ -190,6 +403,18 @@ function RiderCard({
           <Tag color={getSessionColor(currentSession)}>{currentSession}</Tag>
         </div>
 
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-bold text-blue-700">
+              Assigned Zone:
+            </span>
+
+            <Tag color="blue">
+              {riderZoneName} {riderZoneId ? `#${riderZoneId}` : ""}
+            </Tag>
+          </div>
+        </div>
+
         <div className="grid gap-3">
           <InfoRow icon={Phone} value={getPhone(rider)} />
           <InfoRow icon={Mail} value={getEmail(rider)} />
@@ -202,6 +427,7 @@ function RiderCard({
               <Coins size={14} className="text-amber-500" />
               Earning
             </div>
+
             <p className="mt-2 text-base font-black text-slate-900">
               {money(getEarning(rider))}
             </p>
@@ -212,6 +438,7 @@ function RiderCard({
               <CircleDollarSign size={14} className="text-emerald-500" />
               Cash
             </div>
+
             <p className="mt-2 text-base font-black text-slate-900">
               {money(getCash(rider))}
             </p>
@@ -248,6 +475,31 @@ function Riders() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
+  const agentZoneId = Number(
+    user?.zoneId ||
+      user?.zoneID ||
+      user?.zone_id ||
+      user?.zone?.zoneId ||
+      user?.zone?.id ||
+      user?.zone?._id ||
+      user?.assignedZone?.zoneId ||
+      user?.assignedZone?._id ||
+      user?.agentZone?.zoneId ||
+      user?.agentZone?._id ||
+      1
+  );
+
+  const agentZoneName =
+    user?.zoneName ||
+    user?.zone_name ||
+    user?.zone?.zoneName ||
+    user?.zone?.name ||
+    user?.assignedZone?.zoneName ||
+    user?.assignedZone?.name ||
+    user?.agentZone?.zoneName ||
+    user?.agentZone?.name ||
+    `Zone #${agentZoneId}`;
+
   const [searchType, setSearchType] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -261,50 +513,40 @@ function Riders() {
 
   const pageSize = 6;
 
-  const { data: ridersData = [], isLoading, refetch } = useQuery({
-    queryKey: ["riders", user?.zoneId],
-    queryFn: async () => {
-      const response = await api.post("/zone/rider-list?limit=100&page=1", {
-        zoneId: user?.zoneId,
-      });
-      const payload = response?.data;
-      return Array.isArray(payload?.result)
-        ? payload.result
-        : Array.isArray(payload?.data)
-        ? payload.data
-        : [];
-    },
-    enabled: !!user?.zoneId,
+  const {
+    data: ridersData = [],
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["riders", agentZoneId],
+    queryFn: () => fetchZoneRiders(agentZoneId),
+    enabled: !!agentZoneId,
     refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
 
-  const { data: withdrawData = [] } = useQuery({
-    queryKey: ["rider-withdraw-list", user?.zoneId],
-    queryFn: async () => {
-      const response = await api.get("/zone/payment/rider/withdraw-list?page=1&limit=100");
-      const payload = response?.data;
-      return Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload?.result)
-        ? payload.result
-        : [];
-    },
-    enabled: !!user?.zoneId,
+  const {
+    data: rawWithdrawData = [],
+    isFetching: withdrawFetching,
+    refetch: refetchWithdraw,
+  } = useQuery({
+    queryKey: ["rider-withdraw-list", agentZoneId],
+    queryFn: () => fetchWithdrawRows(agentZoneId),
+    enabled: !!agentZoneId,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
   });
 
-  const { data: collectionData = [] } = useQuery({
-    queryKey: ["rider-cash-collection-list", user?.zoneId],
-    queryFn: async () => {
-      const response = await api.get("/zone/payment/rider/cashcollection-list?page=1&limit=100");
-      const payload = response?.data;
-      return Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload?.result)
-        ? payload.result
-        : [];
-    },
-    enabled: !!user?.zoneId,
+  const {
+    data: rawCollectionData = [],
+    isFetching: collectionFetching,
+    refetch: refetchCollection,
+  } = useQuery({
+    queryKey: ["rider-cash-collection-list", agentZoneId],
+    queryFn: () => fetchCollectionRows(agentZoneId),
+    enabled: !!agentZoneId,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
   });
 
   const riders = useMemo(() => {
@@ -314,6 +556,22 @@ function Riders() {
       session: sessionOverrides[item._id] || getSessionStatus(item),
     }));
   }, [ridersData, statusOverrides, sessionOverrides]);
+
+  const withdrawData = useMemo(() => {
+    return filterPaymentRowsByZoneRiders(
+      rawWithdrawData,
+      ridersData,
+      agentZoneId
+    );
+  }, [rawWithdrawData, ridersData, agentZoneId]);
+
+  const collectionData = useMemo(() => {
+    return filterPaymentRowsByZoneRiders(
+      rawCollectionData,
+      ridersData,
+      agentZoneId
+    );
+  }, [rawCollectionData, ridersData, agentZoneId]);
 
   const filteredRiders = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
@@ -356,7 +614,8 @@ function Riders() {
     return {
       total: riders.length,
       active: riders.filter(
-        (item) => String(getAccountStatus(item) || "").toLowerCase() === "active"
+        (item) =>
+          String(getAccountStatus(item) || "").toLowerCase() === "active"
       ).length,
       totalEarning: riders.reduce((sum, item) => sum + getEarning(item), 0),
       totalCash: riders.reduce((sum, item) => sum + getCash(item), 0),
@@ -373,18 +632,22 @@ function Riders() {
         data: {
           riderId: rider._id,
           status: value,
+          zoneId: agentZoneId,
         },
         validateStatus: () => true,
       });
 
       if (response?.data?.success) {
-        queryClient.invalidateQueries({ queryKey: ["riders"] });
+        queryClient.invalidateQueries({ queryKey: ["riders", agentZoneId] });
         message.success("Rider status updated");
       } else {
         throw new Error(response?.data?.message || "Update failed");
       }
     } catch (error) {
-      setStatusOverrides((prev) => ({ ...prev, [rider._id]: getAccountStatus(rider) }));
+      setStatusOverrides((prev) => ({
+        ...prev,
+        [rider._id]: getAccountStatus(rider),
+      }));
       message.error(error?.message || "Failed to update rider status");
     }
   };
@@ -399,27 +662,34 @@ function Riders() {
         data: {
           riderId: rider._id,
           session: value,
+          zoneId: agentZoneId,
         },
         validateStatus: () => true,
       });
 
       if (response?.data?.success) {
-        queryClient.invalidateQueries({ queryKey: ["riders"] });
+        queryClient.invalidateQueries({ queryKey: ["riders", agentZoneId] });
         message.success("Rider session updated");
       } else {
         throw new Error(response?.data?.message || "Update failed");
       }
     } catch (error) {
-      setSessionOverrides((prev) => ({ ...prev, [rider._id]: getSessionStatus(rider) }));
+      setSessionOverrides((prev) => ({
+        ...prev,
+        [rider._id]: getSessionStatus(rider),
+      }));
       message.error(error?.message || "Failed to update rider session");
     }
   };
 
   const deleteRider = async (rider) => {
     try {
-      const { data } = await api.delete(`/zone/rider/delete/${rider._id}`);
+      const { data } = await api.delete(
+        `/zone/rider/delete/${rider._id}?zoneId=${agentZoneId}`
+      );
+
       if (data?.success) {
-        queryClient.invalidateQueries({ queryKey: ["riders"] });
+        queryClient.invalidateQueries({ queryKey: ["riders", agentZoneId] });
         message.success("Rider deleted");
       } else {
         message.error(data?.message || "Delete failed");
@@ -431,55 +701,84 @@ function Riders() {
 
   const updateWithdrawStatus = async (row, status) => {
     try {
-      const { data } = await api.put("/zone/payment/rider-withdraw-status", {
-        withdrawId: row._id,
-        status,
+      const response = await api.request({
+        method: "put",
+        url: "/zone/payment/rider-withdraw-status",
+        data: {
+          withdrawId: row._id,
+          paymentId: row._id,
+          status,
+          zoneId: agentZoneId,
+        },
+        validateStatus: () => true,
       });
 
-      if (data?.success) {
-        message.success(data?.message || "Withdraw status updated");
-        queryClient.invalidateQueries({ queryKey: ["rider-withdraw-list", user?.zoneId] });
+      if (response?.data?.success) {
+        message.success(response?.data?.message || "Withdraw status updated");
+
+        await Promise.all([
+          refetchWithdraw(),
+          queryClient.invalidateQueries({
+            queryKey: ["rider-withdraw-list", agentZoneId],
+          }),
+        ]);
       } else {
-        message.error(data?.message || "Failed to update withdraw status");
+        throw new Error(
+          response?.data?.message || "Failed to update withdraw status"
+        );
       }
     } catch (error) {
-      message.error(error?.response?.data?.message || "Failed to update withdraw status");
+      message.error(error?.message || "Failed to update withdraw status");
     }
   };
 
   const updateCollectionStatus = async (row, status) => {
     try {
-      const { data } = await api.put("/zone/payment/rider-collection-status", {
-        collectionId: row._id,
-        status,
+      const response = await api.request({
+        method: "put",
+        url: "/zone/payment/rider-collection-status",
+        data: {
+          collectionId: row._id,
+          paymentId: row._id,
+          status,
+          zoneId: agentZoneId,
+        },
+        validateStatus: () => true,
       });
 
-      if (data?.success) {
-        message.success(data?.message || "Collection status updated");
-        queryClient.invalidateQueries({
-          queryKey: ["rider-cash-collection-list", user?.zoneId],
-        });
+      if (response?.data?.success) {
+        message.success(response?.data?.message || "Collection status updated");
+
+        await Promise.all([
+          refetchCollection(),
+          queryClient.invalidateQueries({
+            queryKey: ["rider-cash-collection-list", agentZoneId],
+          }),
+        ]);
       } else {
-        message.error(data?.message || "Failed to update collection status");
+        throw new Error(
+          response?.data?.message || "Failed to update collection status"
+        );
       }
     } catch (error) {
-      message.error(
-        error?.response?.data?.message || "Failed to update collection status"
-      );
+      message.error(error?.message || "Failed to update collection status");
     }
   };
 
   const withdrawColumns = [
     {
       title: "Rider ID",
-      dataIndex: "riderId",
       key: "riderId",
-      render: (val) => <span className="font-medium text-blue-600">{val}</span>,
+      render: (_, row) => (
+        <span className="font-medium text-blue-600">
+          {getPaymentRiderId(row) || "N/A"}
+        </span>
+      ),
     },
     {
       title: "Phone",
-      dataIndex: "phone",
       key: "phone",
+      render: (_, row) => getPaymentRiderPhone(row),
     },
     {
       title: "Amount",
@@ -491,12 +790,25 @@ function Riders() {
       title: "Payment Method",
       dataIndex: "paymentMethod",
       key: "paymentMethod",
+      render: (val) => val || "N/A",
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (val) => <Tag color="green">{val}</Tag>,
+      render: (val) => (
+        <Tag
+          color={
+            String(val || "").toLowerCase() === "completed"
+              ? "green"
+              : String(val || "").toLowerCase() === "invalid"
+              ? "red"
+              : "blue"
+          }
+        >
+          {val || "Pending"}
+        </Tag>
+      ),
     },
     {
       title: "Created At",
@@ -524,14 +836,22 @@ function Riders() {
   const collectionColumns = [
     {
       title: "Rider ID",
-      dataIndex: "riderId",
       key: "riderId",
-      render: (val) => <span className="font-medium text-blue-600">{val}</span>,
+      render: (_, row) => (
+        <span className="font-medium text-blue-600">
+          {getPaymentRiderId(row) || "N/A"}
+        </span>
+      ),
     },
     {
       title: "Sender Number",
-      dataIndex: "senderNumber",
       key: "senderNumber",
+      render: (_, row) =>
+        row?.senderNumber ||
+        row?.senderPhone ||
+        row?.phone ||
+        row?.phoneNumber ||
+        "N/A",
     },
     {
       title: "Amount",
@@ -541,20 +861,36 @@ function Riders() {
     },
     {
       title: "Transaction ID",
-      dataIndex: "transactionId",
       key: "transactionId",
-      render: (val) => <span className="font-medium">{val}</span>,
+      render: (_, row) => (
+        <span className="font-medium">
+          {row?.transactionId || row?.trxId || row?.trxID || "N/A"}
+        </span>
+      ),
     },
     {
       title: "Payment Method",
       dataIndex: "paymentMethod",
       key: "paymentMethod",
+      render: (val) => val || "N/A",
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (val) => <Tag color="green">{val}</Tag>,
+      render: (val) => (
+        <Tag
+          color={
+            String(val || "").toLowerCase() === "completed"
+              ? "green"
+              : String(val || "").toLowerCase() === "invalid"
+              ? "red"
+              : "blue"
+          }
+        >
+          {val || "Pending"}
+        </Tag>
+      ),
     },
     {
       title: "Created At",
@@ -594,13 +930,19 @@ function Riders() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-blue-600">
                 Food Verse Agent Rider Control
               </p>
+
               <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 md:text-4xl">
                 Rider Management
               </h1>
+
               <p className="mt-2 text-sm text-slate-500">
                 Search by phone or rider ID, manage rider status, withdraws and
                 cash collections.
               </p>
+
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700">
+                Managing Zone: {agentZoneName} #{agentZoneId || "N/A"}
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -622,7 +964,7 @@ function Riders() {
               >
                 <div className="flex items-center gap-2">
                   <ArrowDownToLine size={16} />
-                  Withdraw List
+                  Withdraw List ({withdrawData.length})
                 </div>
               </Button>
 
@@ -632,7 +974,7 @@ function Riders() {
               >
                 <div className="flex items-center gap-2">
                   <Wallet size={16} />
-                  Cash Collection Payment
+                  Cash Collection Payment ({collectionData.length})
                 </div>
               </Button>
             </div>
@@ -643,7 +985,7 @@ function Riders() {
               {
                 title: "Total Riders",
                 value: stats.total,
-                subtitle: "Zone riders",
+                subtitle: `${agentZoneName} riders`,
                 icon: <Bike size={20} />,
                 wrap: "bg-blue-100 text-blue-600",
               },
@@ -678,12 +1020,15 @@ function Riders() {
                 >
                   {item.icon}
                 </div>
+
                 <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">
                   {item.title}
                 </p>
+
                 <h3 className="mt-2 text-lg font-black text-slate-950 md:text-2xl">
                   {item.value}
                 </h3>
+
                 <p className="mt-2 text-xs text-slate-500 md:text-sm">
                   {item.subtitle}
                 </p>
@@ -700,7 +1045,10 @@ function Riders() {
                   { value: "all", label: "Filter: all" },
                   { value: "active", label: "active" },
                   { value: "busy", label: "busy" },
-                  { value: "waiting for approved", label: "waiting for approved" },
+                  {
+                    value: "waiting for approved",
+                    label: "waiting for approved",
+                  },
                   { value: "banned", label: "banned" },
                 ]}
               />
@@ -730,6 +1078,8 @@ function Riders() {
                   setFilterStatus("all");
                   setPage(1);
                   refetch();
+                  refetchWithdraw();
+                  refetchCollection();
                 }}
                 className="!h-10 !rounded-xl !border-slate-200 !font-semibold"
               >
@@ -749,9 +1099,11 @@ function Riders() {
             ) : paginatedRiders.length === 0 ? (
               <div className="rounded-[30px] border border-slate-200 bg-white p-16 text-center shadow-sm">
                 <Bike size={42} className="mx-auto mb-4 text-slate-300" />
-                <h3 className="text-lg font-bold text-slate-700">No Riders Found</h3>
+                <h3 className="text-lg font-bold text-slate-700">
+                  No Riders Found
+                </h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  No rider matched your search or filter.
+                  No rider matched your search or filter in {agentZoneName}.
                 </p>
               </div>
             ) : (
@@ -801,14 +1153,19 @@ function Riders() {
         footer={null}
         width={1200}
         centered
-        title={<div className="text-2xl font-black text-slate-950">Withdraw List</div>}
+        title={
+          <div className="text-2xl font-black text-slate-950">
+            Withdraw List — {agentZoneName} #{agentZoneId}
+          </div>
+        }
       >
         <Table
-          rowKey="_id"
+          rowKey={(row) => row?._id || `${getPaymentRiderId(row)}-${row?.createdAt}`}
           dataSource={withdrawData}
           columns={withdrawColumns}
           pagination={{ pageSize: 8 }}
           scroll={{ x: 1000 }}
+          loading={withdrawFetching}
         />
       </Modal>
 
@@ -818,14 +1175,19 @@ function Riders() {
         footer={null}
         width={1350}
         centered
-        title={<div className="text-2xl font-black text-slate-950">Cash Collection List</div>}
+        title={
+          <div className="text-2xl font-black text-slate-950">
+            Cash Collection List — {agentZoneName} #{agentZoneId}
+          </div>
+        }
       >
         <Table
-          rowKey="_id"
+          rowKey={(row) => row?._id || `${getPaymentRiderId(row)}-${row?.createdAt}`}
           dataSource={collectionData}
           columns={collectionColumns}
           pagination={{ pageSize: 8 }}
           scroll={{ x: 1200 }}
+          loading={collectionFetching}
         />
       </Modal>
     </Layout>
