@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Layout from "../components/layout/Layout";
 import { fetchDashboardData } from "../api/dashboardApi";
+import api from "../api/config";
 import { useAuth } from "../context/authContext";
 import {
   Bike,
@@ -75,6 +76,734 @@ const toneMap = {
 };
 
 const formatMoney = (value) => `BDT ${Number(value || 0).toLocaleString()}`;
+
+const toNumber = (value) => {
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[৳,+\s]/g, "");
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const pickNumber = (source, keys = []) => {
+  for (const key of keys) {
+    const value = toNumber(source?.[key]);
+    if (value > 0) return value;
+  }
+
+  return 0;
+};
+
+const getPlatformFee = (item) =>
+  toNumber(
+    item?.plateformFee ??
+      item?.platformFee ??
+      item?.platformFees ??
+      item?.adminFee ??
+      item?.serviceFee ??
+      0
+  );
+
+const getItemDiscountAmount = (item, beforeDiscount) => {
+  const directDiscount = pickNumber(item, [
+    "discountAmount",
+    "menuDiscountAmount",
+    "offerDiscountAmount",
+    "itemDiscountAmount",
+    "discountValue",
+  ]);
+
+  if (directDiscount > 0) return directDiscount;
+
+  const discountRate = pickNumber(item, [
+    "discountRate",
+    "discountPercent",
+    "discountPercentage",
+    "offerDiscount",
+    "discount",
+  ]);
+
+  if (discountRate > 0) {
+    return (beforeDiscount * discountRate) / 100;
+  }
+
+  return 0;
+};
+
+const getDiscountedCustomerUnitPrice = (item) => {
+  const basedPrice = toNumber(item?.basedPrice ?? item?.basePrice);
+  const platformFee = getPlatformFee(item);
+  const beforeDiscount = basedPrice + platformFee;
+
+  if (beforeDiscount > 0) {
+    const discountAmount = getItemDiscountAmount(item, beforeDiscount);
+    const calculatedAfterDiscount = Math.max(0, beforeDiscount - discountAmount);
+
+    const possiblePrices = [
+      calculatedAfterDiscount,
+      toNumber(item?.offerPrice),
+      toNumber(item?.sellingPrice),
+      toNumber(item?.price),
+    ].filter((value) => value > 0);
+
+    return possiblePrices.length ? Math.min(...possiblePrices) : 0;
+  }
+
+  return (
+    toNumber(item?.offerPrice) ||
+    toNumber(item?.sellingPrice) ||
+    toNumber(item?.price) ||
+    0
+  );
+};
+
+const calculateDiscountedFoodSellFromItems = (items = []) => {
+  if (!Array.isArray(items) || !items.length) return 0;
+
+  return items.reduce((sum, item) => {
+    const quantity = toNumber(item?.quantity || item?.qty || 1) || 1;
+    return sum + getDiscountedCustomerUnitPrice(item) * quantity;
+  }, 0);
+};
+
+const getSummaryDiscountAmount = (item) =>
+  pickNumber(item, [
+    "itemDiscount",
+    "itemDiscountAmount",
+    "menuDiscount",
+    "menuDiscountAmount",
+    "offerDiscountAmount",
+    "productDiscount",
+    "foodDiscount",
+    "foodDiscountAmount",
+    "discountAmount",
+    "totalDiscount",
+  ]);
+
+const getCorrectFoodSell = (item) => {
+  const explicitDiscounted = pickNumber(item, [
+    "discountedFoodSell",
+    "netFoodSell",
+    "foodSellAfterDiscount",
+    "afterDiscountFoodSell",
+    "customerPayableFoodSell",
+  ]);
+
+  if (explicitDiscounted > 0) return explicitDiscounted;
+
+  const itemsTotal = calculateDiscountedFoodSellFromItems(
+    item?.items || item?.orderItems || item?.menus || []
+  );
+
+  if (itemsTotal > 0) return itemsTotal;
+
+  const foodSellBeforeDiscount =
+    pickNumber(item, ["foodSellBeforeDiscount", "grossFoodSell"]) ||
+    toNumber(item?.foodSell);
+
+  const discountAmount = getSummaryDiscountAmount(item);
+
+  if (foodSellBeforeDiscount > 0 && discountAmount > 0) {
+    return Math.max(0, foodSellBeforeDiscount - discountAmount);
+  }
+
+  return foodSellBeforeDiscount;
+};
+
+const normalizeSalesItem = (item) => {
+  const foodSell = getCorrectFoodSell(item);
+
+  return {
+    ...item,
+    foodSell,
+  };
+};
+
+const normalizeDashboardData = (payload = {}) => {
+  const salesSummary = Array.isArray(payload?.salesSummary)
+    ? payload.salesSummary.map(normalizeSalesItem)
+    : [];
+
+  const orderOverview = Array.isArray(payload?.orderOverview)
+    ? payload.orderOverview.map(normalizeSalesItem)
+    : [];
+
+  const revenueOverview = Array.isArray(payload?.revenueOverview)
+    ? payload.revenueOverview.map(normalizeSalesItem)
+    : [];
+
+  const topRestaurants = Array.isArray(payload?.topRestaurants)
+    ? payload.topRestaurants.map((restaurant) => ({
+        ...restaurant,
+        foodSell: getCorrectFoodSell(restaurant),
+      }))
+    : [];
+
+  return {
+    ...payload,
+    salesSummary,
+    orderOverview,
+    revenueOverview,
+    topRestaurants,
+  };
+};
+
+const getUserZoneId = (user) =>
+  user?.zoneId ||
+  user?.zoneID ||
+  user?.zone?._id ||
+  user?.zone?.zoneId ||
+  user?.assignedZone?._id ||
+  user?.assignedZone?.zoneId ||
+  user?.agentZone?._id ||
+  user?.agentZone?.zoneId ||
+  null;
+
+const DASHBOARD_ORDER_CACHE_TTL = 60 * 1000;
+const DASHBOARD_ORDER_PAGE_LIMIT = 500;
+const DASHBOARD_ORDER_MAX_PAGES = 20;
+const DASHBOARD_ORDER_CONCURRENCY = 4;
+
+const getDashboardOrderCacheKey = (zoneId) => {
+  const today = new Date().toISOString().slice(0, 10);
+  return `agent-dashboard-orders-${zoneId}-${today}`;
+};
+
+const getCachedDashboardOrders = (zoneId) => {
+  try {
+    const raw = localStorage.getItem(getDashboardOrderCacheKey(zoneId));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    const createdAt = Number(parsed?.createdAt || 0);
+    const orders = Array.isArray(parsed?.orders) ? parsed.orders : [];
+
+    if (!createdAt || Date.now() - createdAt > DASHBOARD_ORDER_CACHE_TTL) {
+      return null;
+    }
+
+    return orders;
+  } catch (error) {
+    return null;
+  }
+};
+
+const setCachedDashboardOrders = (zoneId, orders = []) => {
+  try {
+    localStorage.setItem(
+      getDashboardOrderCacheKey(zoneId),
+      JSON.stringify({ createdAt: Date.now(), orders })
+    );
+  } catch (error) {
+    // Ignore cache write errors.
+  }
+};
+
+const extractOrderListPayload = (payload) => {
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.result)) return payload.result;
+  if (Array.isArray(payload?.orders)) return payload.orders;
+  if (Array.isArray(payload?.data?.orders)) return payload.data.orders;
+  if (Array.isArray(payload?.result?.orders)) return payload.result.orders;
+  if (Array.isArray(payload)) return payload;
+  return [];
+};
+
+const extractOrderTotalCount = (payload, fallback = 0) => {
+  return Number(
+    payload?.totalCount ||
+      payload?.count ||
+      payload?.total ||
+      payload?.totalOrders ||
+      payload?.pagination?.total ||
+      payload?.meta?.total ||
+      payload?.data?.totalCount ||
+      payload?.data?.total ||
+      payload?.result?.totalCount ||
+      payload?.result?.total ||
+      fallback ||
+      0
+  );
+};
+
+const uniqueOrders = (orders = []) => {
+  return Array.from(
+    new Map(
+      orders
+        .filter(Boolean)
+        .map((item, index) => [item?._id || item?.id || `order-${index}`, item])
+    ).values()
+  );
+};
+
+const fetchOrderPage = async (zoneId, page, limit = DASHBOARD_ORDER_PAGE_LIMIT) => {
+  const response = await api.post(`/zone/order-list?page=${page}&limit=${limit}`, {
+    zoneId,
+  });
+
+  const payload = response?.data;
+
+  return {
+    rows: extractOrderListPayload(payload),
+    totalCount: extractOrderTotalCount(payload),
+  };
+};
+
+const runInBatches = async (items = [], batchSize = 4, worker) => {
+  const results = [];
+
+  for (let index = 0; index < items.length; index += batchSize) {
+    const batch = items.slice(index, index + batchSize);
+    const batchResults = await Promise.all(batch.map(worker));
+    results.push(...batchResults);
+  }
+
+  return results;
+};
+
+const fetchAllDashboardOrders = async (user, options = {}) => {
+  const zoneId = getUserZoneId(user);
+
+  if (!zoneId) return [];
+
+  const cachedOrders = options.useCache !== false ? getCachedDashboardOrders(zoneId) : null;
+
+  if (cachedOrders) {
+    return cachedOrders;
+  }
+
+  const firstPage = await fetchOrderPage(zoneId, 1);
+  const firstRows = firstPage.rows;
+  const totalCount = firstPage.totalCount;
+
+  if (!firstRows.length) {
+    setCachedDashboardOrders(zoneId, []);
+    return [];
+  }
+
+  const totalPages = totalCount
+    ? Math.min(DASHBOARD_ORDER_MAX_PAGES, Math.ceil(totalCount / DASHBOARD_ORDER_PAGE_LIMIT))
+    : firstRows.length < DASHBOARD_ORDER_PAGE_LIMIT
+    ? 1
+    : DASHBOARD_ORDER_MAX_PAGES;
+
+  if (totalPages <= 1) {
+    const orders = uniqueOrders(firstRows);
+    setCachedDashboardOrders(zoneId, orders);
+    return orders;
+  }
+
+  const remainingPages = Array.from({ length: totalPages - 1 }, (_, index) => index + 2);
+
+  const remainingResults = await runInBatches(
+    remainingPages,
+    DASHBOARD_ORDER_CONCURRENCY,
+    async (page) => {
+      try {
+        return await fetchOrderPage(zoneId, page);
+      } catch (error) {
+        console.error("Dashboard order page load error:", page, error);
+        return { rows: [], totalCount: 0 };
+      }
+    }
+  );
+
+  const orders = uniqueOrders([
+    ...firstRows,
+    ...remainingResults.flatMap((item) => item.rows || []),
+  ]);
+
+  setCachedDashboardOrders(zoneId, orders);
+  return orders;
+};
+
+const getOrderStatusText = (order) =>
+  String(
+    order?.orderStatus ||
+      order?.status ||
+      order?.deliveryStatus ||
+      order?.paymentStatus ||
+      order?.currentStatus ||
+      ""
+  ).toLowerCase();
+
+const isCompletedOrder = (order) => {
+  const status = getOrderStatusText(order);
+
+  const successStatuses = [
+    "complete",
+    "completed",
+    "success",
+    "successful",
+    "delivered",
+    "delivery completed",
+    "order completed",
+  ];
+
+  return successStatuses.some((item) => status.includes(item));
+};
+
+const getOrderDate = (order) => {
+  const dateValue =
+    order?.deliveredAt ||
+    order?.deliveryDate ||
+    order?.orderDate ||
+    order?.createdAt ||
+    order?.updatedAt;
+
+  const date = new Date(dateValue);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const startOfDay = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const endOfDay = (date) => {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+};
+
+const startOfWeek = (date) => {
+  const d = startOfDay(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d;
+};
+
+const startOfMonth = (date) =>
+  new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+
+const isDateBetween = (date, start, end) => date >= start && date <= end;
+
+const getOrderItems = (order) => {
+  if (Array.isArray(order?.items)) return order.items;
+  if (Array.isArray(order?.orderItems)) return order.orderItems;
+  if (Array.isArray(order?.menus)) return order.menus;
+  return [];
+};
+
+const getAddonTotalFromItems = (items = []) =>
+  items.reduce((sum, item) => {
+    const addons = Array.isArray(item?.addons) ? item.addons : [];
+
+    return (
+      sum +
+      addons.reduce(
+        (addonSum, addon) =>
+          addonSum +
+          toNumber(addon?.price || addon?.addonPrice) *
+            (toNumber(addon?.quantity || addon?.qty || 1) || 1),
+        0
+      )
+    );
+  }, 0);
+
+const getRestaurantUnitPrice = (item) =>
+  toNumber(
+    item?.restaurantPrice ??
+      item?.restaurantAmount ??
+      item?.restaurantEarning ??
+      item?.basedPrice ??
+      item?.basePrice ??
+      item?.menuId?.basedPrice ??
+      item?.menuId?.basePrice ??
+      item?.menu?.basedPrice ??
+      0
+  );
+
+const getOrderRestaurantSell = (order) => {
+  const direct = pickNumber(order, [
+    "restaurantFoodSell",
+    "restaurantSell",
+    "restaurantSale",
+    "restaurantAmount",
+    "restaurantEarning",
+    "restaurantSubTotal",
+  ]);
+
+  if (direct > 0) return direct;
+
+  const items = getOrderItems(order);
+  const itemsTotal = items.reduce((sum, item) => {
+    const quantity = toNumber(item?.quantity || item?.qty || 1) || 1;
+    return sum + getRestaurantUnitPrice(item) * quantity;
+  }, 0);
+
+  return itemsTotal + getAddonTotalFromItems(items);
+};
+
+const getOrderFoodSell = (order) => {
+  const items = getOrderItems(order);
+  const itemsTotal = calculateDiscountedFoodSellFromItems(items);
+
+  if (itemsTotal > 0) {
+    return itemsTotal + getAddonTotalFromItems(items);
+  }
+
+  const beforeDiscount =
+    pickNumber(order, [
+      "foodSellBeforeDiscount",
+      "grossFoodSell",
+      "itemsTotalBeforeDiscount",
+      "subTotalBeforeDiscount",
+    ]) ||
+    toNumber(order?.foodSell) ||
+    toNumber(order?.totalAmount) ||
+    toNumber(order?.grandTotal);
+
+  const discount = pickNumber(order, [
+    "discountAmount",
+    "voucherDiscount",
+    "couponDiscount",
+    "offerDiscountAmount",
+    "menuDiscountAmount",
+    "foodDiscountAmount",
+    "totalDiscount",
+  ]);
+
+  if (beforeDiscount > 0 && discount > 0) {
+    return Math.max(0, beforeDiscount - discount);
+  }
+
+  return beforeDiscount;
+};
+
+const getOrderDeliveryFee = (order) =>
+  toNumber(
+    order?.deliveryFee ??
+      order?.deliveryCharge ??
+      order?.deliveryAmount ??
+      order?.deliveryChargeCollected ??
+      0
+  );
+
+const getOrderRiderFee = (order) =>
+  toNumber(
+    order?.riderFee ??
+      order?.riderCost ??
+      order?.riderPayment ??
+      order?.deliveryCost ??
+      0
+  );
+
+const getOrderRiderTips = (order) =>
+  toNumber(
+    order?.riderTips ??
+      order?.riderTip ??
+      order?.tipAmount ??
+      order?.tip ??
+      0
+  );
+
+const getOrderRestaurantId = (order) =>
+  order?.restaurantId?._id ||
+  order?.restaurantId ||
+  order?.restaurant?._id ||
+  order?.restaurant ||
+  "unknown";
+
+const getOrderRestaurantName = (order) =>
+  order?.restaurantName ||
+  order?.restaurantId?.name ||
+  order?.restaurantId?.restaurantName ||
+  order?.restaurant?.name ||
+  order?.restaurant?.restaurantName ||
+  "Unknown Restaurant";
+
+const getOrderRestaurantPhone = (order) =>
+  order?.restaurantId?.phoneNumber ||
+  order?.restaurantId?.phone ||
+  order?.restaurant?.phoneNumber ||
+  order?.restaurant?.phone ||
+  "N/A";
+
+const calculateOrderMetrics = (orders = []) =>
+  orders.reduce(
+    (acc, order) => {
+      const foodSell = getOrderFoodSell(order);
+      const restaurantSell = getOrderRestaurantSell(order);
+      const deliveryFee = getOrderDeliveryFee(order);
+      const riderFee = getOrderRiderFee(order);
+      const riderTips = getOrderRiderTips(order);
+
+      acc.foodSell += foodSell;
+      acc.restaurantSell += restaurantSell;
+      acc.deliveryFee += deliveryFee;
+      acc.deliveryProfit += deliveryFee - riderFee;
+      acc.riderTips += riderTips;
+      acc.totalOrder += 1;
+
+      return acc;
+    },
+    {
+      foodSell: 0,
+      restaurantSell: 0,
+      deliveryFee: 0,
+      deliveryProfit: 0,
+      riderTips: 0,
+      totalOrder: 0,
+    }
+  );
+
+const makeSalesCard = (title, orders, tone) => {
+  const metrics = calculateOrderMetrics(orders);
+
+  return {
+    title,
+    foodSell: metrics.foodSell,
+    restaurantSell: metrics.restaurantSell,
+    deliveryFee: metrics.deliveryFee,
+    deliveryProfit: metrics.deliveryProfit,
+    riderTips: metrics.riderTips,
+    tone,
+  };
+};
+
+const buildSalesSummaryFromOrders = (orders = []) => {
+  const completedOrders = orders.filter(isCompletedOrder);
+  const now = new Date();
+
+  const todayStart = startOfDay(now);
+  const todayEnd = endOfDay(now);
+  const weekStart = startOfWeek(now);
+  const monthStart = startOfMonth(now);
+
+  const todayOrders = completedOrders.filter((order) => {
+    const date = getOrderDate(order);
+    return date && isDateBetween(date, todayStart, todayEnd);
+  });
+
+  const weeklyOrders = completedOrders.filter((order) => {
+    const date = getOrderDate(order);
+    return date && date >= weekStart && date <= todayEnd;
+  });
+
+  const monthlyOrders = completedOrders.filter((order) => {
+    const date = getOrderDate(order);
+    return date && date >= monthStart && date <= todayEnd;
+  });
+
+  return [
+    makeSalesCard("Today's Sales", todayOrders, "blue"),
+    makeSalesCard("Weekly Sales", weeklyOrders, "emerald"),
+    makeSalesCard("Monthly Sales", monthlyOrders, "violet"),
+  ];
+};
+
+const makeShortDateLabel = (date) =>
+  date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+  });
+
+const buildDailyOverviewFromOrders = (orders = [], days = 7) => {
+  const completedOrders = orders.filter(isCompletedOrder);
+  const rows = [];
+
+  for (let index = days - 1; index >= 0; index -= 1) {
+    const date = startOfDay(new Date());
+    date.setDate(date.getDate() - index);
+
+    const dateStart = startOfDay(date);
+    const dateEnd = endOfDay(date);
+
+    const dayOrders = completedOrders.filter((order) => {
+      const orderDate = getOrderDate(order);
+      return orderDate && isDateBetween(orderDate, dateStart, dateEnd);
+    });
+
+    const metrics = calculateOrderMetrics(dayOrders);
+
+    rows.push({
+      label: makeShortDateLabel(date),
+      foodSell: metrics.foodSell,
+      restaurantSell: metrics.restaurantSell,
+      deliveryFee: metrics.deliveryFee,
+      deliveryProfit: metrics.deliveryProfit,
+      chartDeliveryProfit: Math.max(metrics.deliveryProfit, 0),
+      riderTips: metrics.riderTips,
+      totalOrder: metrics.totalOrder,
+    });
+  }
+
+  return rows;
+};
+
+const buildTopRestaurantsFromOrders = (orders = []) => {
+  const map = new Map();
+
+  orders.filter(isCompletedOrder).forEach((order) => {
+    const restaurantId = String(getOrderRestaurantId(order));
+
+    if (!map.has(restaurantId)) {
+      map.set(restaurantId, {
+        id: restaurantId,
+        name: getOrderRestaurantName(order),
+        phone: getOrderRestaurantPhone(order),
+        badge: "Completed sales",
+        foodSell: 0,
+        restaurantSell: 0,
+        orders: 0,
+      });
+    }
+
+    const row = map.get(restaurantId);
+
+    row.foodSell += getOrderFoodSell(order);
+    row.restaurantSell += getOrderRestaurantSell(order);
+    row.orders += 1;
+  });
+
+  return Array.from(map.values())
+    .sort((a, b) => b.foodSell - a.foodSell)
+    .slice(0, 2);
+};
+
+const applyOrderBasedDashboardMetrics = (dashboardData = {}, orders = []) => {
+  if (!Array.isArray(orders) || !orders.length) {
+    return normalizeDashboardData(dashboardData);
+  }
+
+  const salesSummary = buildSalesSummaryFromOrders(orders);
+  const orderOverview = buildDailyOverviewFromOrders(orders);
+  const revenueOverview = orderOverview.map((item) => ({
+    label: item.label,
+    foodSell: item.foodSell,
+  }));
+
+  const topRestaurants = buildTopRestaurantsFromOrders(orders);
+
+  const hasOrderMetrics = salesSummary.some(
+    (item) =>
+      item.foodSell > 0 ||
+      item.restaurantSell > 0 ||
+      item.deliveryFee > 0 ||
+      item.riderTips > 0
+  );
+
+  if (!hasOrderMetrics) {
+    return normalizeDashboardData(dashboardData);
+  }
+
+  return {
+    ...normalizeDashboardData(dashboardData),
+    salesSummary,
+    orderOverview,
+    revenueOverview,
+    topRestaurants: topRestaurants.length
+      ? topRestaurants
+      : normalizeDashboardData(dashboardData).topRestaurants,
+  };
+};
 
 function useAnimatedNumber(target, duration = 900) {
   const [value, setValue] = useState(0);
@@ -461,7 +1190,11 @@ export default function Dashboard() {
       setLoading(true);
       setErrorText("");
       const res = await fetchDashboardData(user);
-      setData(res);
+      const normalized = normalizeDashboardData(res);
+      setData(normalized);
+
+      const orders = await fetchAllDashboardOrders(user);
+      setData(applyOrderBasedDashboardMetrics(res, orders));
     } catch (error) {
       console.error("Dashboard load error:", error);
       setErrorText(

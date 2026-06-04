@@ -106,22 +106,160 @@ const getOrderCustomerName = (order) =>
   order?.customer?.name ||
   "N/A";
 
+const getPlatformFee = (item) =>
+  num(
+    item?.plateformFee ??
+      item?.platformFee ??
+      item?.platformFees ??
+      item?.adminFee ??
+      item?.serviceFee ??
+      item?.platformCharge ??
+      item?.platformAmount ??
+      item?.menuId?.plateformFee ??
+      item?.menuId?.platformFee ??
+      item?.menuId?.platformFees ??
+      0
+  );
+
+const getItemBasePrice = (item) =>
+  num(
+    item?.basedPrice ??
+      item?.basePrice ??
+      item?.restaurantPrice ??
+      item?.restaurantAmount ??
+      item?.menuId?.basedPrice ??
+      item?.menuId?.basePrice ??
+      item?.menuId?.restaurantPrice ??
+      0
+  );
+
+const getDirectDiscountAmount = (item) =>
+  num(
+    item?.discountAmount ??
+      item?.menuDiscountAmount ??
+      item?.offerDiscountAmount ??
+      item?.discountValue ??
+      item?.discountPrice ??
+      item?.menuId?.discountAmount ??
+      item?.menuId?.offerDiscountAmount ??
+      0
+  );
+
+const getDiscountRate = (item) =>
+  num(
+    item?.discountRate ??
+      item?.discountPercent ??
+      item?.discountPercentage ??
+      item?.offerDiscount ??
+      item?.discount ??
+      item?.menuId?.discountRate ??
+      item?.menuId?.discountPercent ??
+      item?.menuId?.discountPercentage ??
+      item?.menuId?.offerDiscount ??
+      item?.menuId?.discount ??
+      0
+  );
+
+const getItemDiscountAmount = (item, beforeDiscount) => {
+  const directDiscount = getDirectDiscountAmount(item);
+
+  if (directDiscount > 0) {
+    return directDiscount;
+  }
+
+  const discountRate = getDiscountRate(item);
+
+  if (discountRate > 0) {
+    return (beforeDiscount * discountRate) / 100;
+  }
+
+  return 0;
+};
+
+const getCustomerUnitPrice = (item) => {
+  const basePrice = getItemBasePrice(item);
+  const platformFee = getPlatformFee(item);
+  const beforeDiscount = basePrice + platformFee;
+
+  if (beforeDiscount > 0) {
+    const discountAmount = getItemDiscountAmount(item, beforeDiscount);
+    return Math.max(0, beforeDiscount - discountAmount);
+  }
+
+  const discountedPrice = num(
+    item?.discountedPrice ??
+      item?.finalPrice ??
+      item?.finalOfferPrice ??
+      item?.salePrice ??
+      item?.customerPrice ??
+      item?.payablePrice ??
+      item?.menuId?.discountedPrice ??
+      item?.menuId?.finalPrice ??
+      item?.menuId?.finalOfferPrice ??
+      item?.menuId?.salePrice ??
+      item?.menuId?.customerPrice ??
+      item?.menuId?.payablePrice ??
+      0
+  );
+
+  if (discountedPrice > 0) {
+    return discountedPrice;
+  }
+
+  return (
+    num(item?.offerPrice ?? item?.menuId?.offerPrice) ||
+    num(item?.sellingPrice ?? item?.menuId?.sellingPrice) ||
+    num(item?.price ?? item?.menuId?.price) ||
+    0
+  );
+};
+
+const getOrderVoucherAmount = (order) => {
+  const voucherObj =
+    order?.voucher || order?.coupon || order?.voucherId || order?.couponId || {};
+
+  return num(
+    order?.voucherExpense ??
+      order?.voucherDiscount ??
+      order?.voucherAmount ??
+      order?.couponDiscount ??
+      order?.couponAmount ??
+      order?.promoDiscount ??
+      order?.promoAmount ??
+      order?.discountByVoucher ??
+      order?.discountByCoupon ??
+      order?.voucherAppliedAmount ??
+      voucherObj?.amount ??
+      voucherObj?.discountAmount ??
+      voucherObj?.discount ??
+      0
+  );
+};
+
+const getDirectFinalTotal = (order) => {
+  return num(
+    order?.totalAfterVoucherApplied ??
+      order?.finalAmount ??
+      order?.payableAmount ??
+      order?.grandTotal ??
+      order?.totalPayable ??
+      order?.totalAmount ??
+      0
+  );
+};
+
 const getOrderMetrics = (order) => {
   const items = Array.isArray(order?.items) ? order.items : [];
 
   const restaurantFoodSale = items.reduce(
-    (sum, item) => sum + num(item?.basedPrice) * num(item?.quantity || 1),
+    (sum, item) => sum + getItemBasePrice(item) * num(item?.quantity || 1),
     0
   );
 
-  const customerFoodSale = items.reduce((sum, item) => {
-    const selling =
-      num(item?.sellingPrice) > 0
-        ? num(item?.sellingPrice)
-        : num(item?.offerPrice);
-
-    return sum + selling * num(item?.quantity || 1);
-  }, 0);
+  const customerFoodSale = items.reduce(
+    (sum, item) => sum + getCustomerUnitPrice(item) * num(item?.quantity || 1),
+    0
+  );
 
   const addonsTotal = items.reduce((sum, item) => {
     const addons = Array.isArray(item?.addons) ? item.addons : [];
@@ -152,13 +290,27 @@ const getOrderMetrics = (order) => {
       0
   );
 
+  const riderTips = num(order?.riderTips ?? order?.tipAmount ?? order?.tip);
+  const voucherAmount = getOrderVoucherAmount(order);
+  const directFinalTotal = getDirectFinalTotal(order);
+
+  const restaurantSale = restaurantFoodSale + addonsTotal;
+  const itemBasedFoodSale = customerFoodSale + addonsTotal;
+
+  const inferredFoodSale =
+    directFinalTotal > 0
+      ? Math.max(0, directFinalTotal - deliveryFee - riderTips + voucherAmount)
+      : 0;
+
+  const foodSale = inferredFoodSale > 0 ? inferredFoodSale : itemBasedFoodSale;
+
   return {
-    restaurantSale: restaurantFoodSale + addonsTotal,
-    foodSale: customerFoodSale + addonsTotal,
-    foodMargin: Math.max(customerFoodSale - restaurantFoodSale, 0),
+    restaurantSale,
+    foodSale,
+    foodMargin: Math.max(foodSale - restaurantSale, 0),
     deliveryFee,
     deliveryProfitAuto: deliveryFee - riderFee,
-    riderTips: num(order?.riderTips ?? order?.tipAmount ?? order?.tip),
+    riderTips,
   };
 };
 

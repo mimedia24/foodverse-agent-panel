@@ -1,11 +1,12 @@
-import React, { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import React, {useMemo, useState} from "react";
+import {useQuery, useQueryClient} from "@tanstack/react-query";
 import {
   Badge,
   Button,
   Checkbox,
   Image,
   Input,
+  InputNumber,
   Modal,
   Select,
   Spin,
@@ -21,14 +22,24 @@ import {
   ShieldCheck,
   Store,
   Flame,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
-import { image_uri } from "../utils/constants";
-import { useAuth } from "../context/authContext";
+import {image_uri} from "../utils/constants";
+import {useAuth} from "../context/authContext";
 
-const { Title, Text } = Typography;
-const { Search: SearchInput } = Input;
+const {Title, Text} = Typography;
+const {Search: SearchInput} = Input;
+
+const updatePopularMenu = ({menuId, status, position}) => {
+  return api.put("/zone/menu/update-popular", {
+    menuId,
+    status,
+    position,
+  });
+};
 
 function formatMoney(value) {
   return `BDT ${Number(value || 0).toLocaleString("en-BD")}`;
@@ -72,7 +83,7 @@ function normalizeMenu(menu) {
   const calculatedOfferPrice = calculateOfferPrice(
     basedPriceValue,
     plateformFeeValue,
-    discountRateValue
+    discountRateValue,
   );
 
   return {
@@ -89,20 +100,23 @@ function normalizeMenu(menu) {
     calculatedOfferPrice,
     isApprovedBool: !!menu?.isApproved,
     isPopularBool: !!menu?.isPopular,
+    popularPositionValue: num(menu?.position || 999),
   };
 }
 
-function StatusTag({ status }) {
+function StatusTag({status}) {
   const normalized = String(status || "").toLowerCase();
 
   if (normalized === "in stock") return <Tag color="blue">in stock</Tag>;
   if (normalized === "out of stock") return <Tag color="red">out of stock</Tag>;
-  if (normalized === "discontinued") return <Tag color="default">discontinued</Tag>;
+  if (normalized === "discontinued") {
+    return <Tag color="default">discontinued</Tag>;
+  }
 
   return <Tag>{status || "unknown"}</Tag>;
 }
 
-function StatsCard({ icon: Icon, label, value, hint }) {
+function StatsCard({icon: Icon, label, value, hint}) {
   return (
     <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -113,6 +127,7 @@ function StatsCard({ icon: Icon, label, value, hint }) {
           <h3 className="mt-2 text-2xl font-black text-slate-950">{value}</h3>
           <p className="mt-1 text-xs text-slate-500">{hint}</p>
         </div>
+
         <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 text-blue-600">
           <Icon size={20} />
         </div>
@@ -121,14 +136,14 @@ function StatsCard({ icon: Icon, label, value, hint }) {
   );
 }
 
-function UpdateDiscountButton({ menuId, currentDiscountRate = 0, queryKey }) {
+function UpdateDiscountButton({menuId, currentDiscountRate = 0, queryKey}) {
   const [open, setOpen] = useState(false);
   const [discountRate, setDiscountRate] = useState(currentDiscountRate);
   const queryClient = useQueryClient();
 
   const handleSubmit = async () => {
     try {
-      const { data } = await api.put("/zone/menu/update-discount-rate", {
+      const {data} = await api.put("/zone/menu/update-discount-rate", {
         menuId,
         discountRate: Number(discountRate || 0),
       });
@@ -136,10 +151,14 @@ function UpdateDiscountButton({ menuId, currentDiscountRate = 0, queryKey }) {
       if (data?.success) {
         message.success(data?.message || "Discount updated successfully");
         setOpen(false);
-        queryClient.invalidateQueries({ queryKey });
+        queryClient.invalidateQueries({queryKey});
+      } else {
+        message.error(data?.message || "Failed to update discount");
       }
     } catch (error) {
-      message.error(error?.response?.data?.message || "Failed to update discount");
+      message.error(
+        error?.response?.data?.message || "Failed to update discount",
+      );
     }
   };
 
@@ -154,27 +173,28 @@ function UpdateDiscountButton({ menuId, currentDiscountRate = 0, queryKey }) {
         title="Update Discount"
         onCancel={() => setOpen(false)}
         onOk={handleSubmit}
-        okText="Update"
-      >
-        <Input
-          type="number"
+        okText="Update">
+        <InputNumber
+          min={0}
+          max={100}
           value={discountRate}
-          onChange={(e) => setDiscountRate(e.target.value)}
+          onChange={value => setDiscountRate(value)}
           placeholder="Enter discount rate"
+          style={{width: "100%"}}
         />
       </Modal>
     </>
   );
 }
 
-function UpdatePlatformFeeButton({ menuId, currentFee = 0, queryKey }) {
+function UpdatePlatformFeeButton({menuId, currentFee = 0, queryKey}) {
   const [open, setOpen] = useState(false);
   const [platformFee, setPlatformFee] = useState(currentFee);
   const queryClient = useQueryClient();
 
   const handleSubmit = async () => {
     try {
-      const { data } = await api.put("/zone/menu/update-platform-fee", {
+      const {data} = await api.put("/zone/menu/update-platform-fee", {
         menuId,
         platformFee: Number(platformFee || 0),
       });
@@ -182,10 +202,14 @@ function UpdatePlatformFeeButton({ menuId, currentFee = 0, queryKey }) {
       if (data?.success) {
         message.success(data?.message || "Platform fee updated successfully");
         setOpen(false);
-        queryClient.invalidateQueries({ queryKey });
+        queryClient.invalidateQueries({queryKey});
+      } else {
+        message.error(data?.message || "Failed to update platform fee");
       }
     } catch (error) {
-      message.error(error?.response?.data?.message || "Failed to update platform fee");
+      message.error(
+        error?.response?.data?.message || "Failed to update platform fee",
+      );
     }
   };
 
@@ -200,40 +224,42 @@ function UpdatePlatformFeeButton({ menuId, currentFee = 0, queryKey }) {
         title="Update Platform Fee"
         onCancel={() => setOpen(false)}
         onOk={handleSubmit}
-        okText="Update"
-      >
-        <Input
-          type="number"
+        okText="Update">
+        <InputNumber
+          min={0}
           value={platformFee}
-          onChange={(e) => setPlatformFee(e.target.value)}
+          onChange={value => setPlatformFee(value)}
           placeholder="Enter platform fee"
+          style={{width: "100%"}}
         />
       </Modal>
     </>
   );
 }
 
-function ApprovalToggle({ menuId, checked, queryKey }) {
+function ApprovalToggle({menuId, checked, queryKey}) {
   const [loading, setLoading] = useState(false);
   const queryClient = useQueryClient();
 
-  const handleChange = async (nextChecked) => {
+  const handleChange = async nextChecked => {
     try {
       setLoading(true);
 
-      const { data } = await api.put("/zone/approve-menu", {
+      const {data} = await api.put("/zone/approve-menu", {
         menuId,
         isApproved: nextChecked,
       });
 
       if (data?.success) {
         message.success(data?.message || "Approval updated successfully");
-        queryClient.invalidateQueries({ queryKey });
+        queryClient.invalidateQueries({queryKey});
       } else {
         message.error(data?.message || "Failed to update approval");
       }
     } catch (error) {
-      message.error(error?.response?.data?.message || "Failed to update approval");
+      message.error(
+        error?.response?.data?.message || "Failed to update approval",
+      );
     } finally {
       setLoading(false);
     }
@@ -242,33 +268,37 @@ function ApprovalToggle({ menuId, checked, queryKey }) {
   return (
     <Checkbox
       checked={checked}
-      onChange={(e) => handleChange(e.target.checked)}
+      onChange={e => handleChange(e.target.checked)}
       disabled={loading}
     />
   );
 }
 
-function PopularToggle({ menuId, checked, queryKey }) {
+function PopularToggle({menuId, checked, queryKey, currentPosition = 999}) {
   const [loading, setLoading] = useState(false);
   const queryClient = useQueryClient();
 
-  const handleChange = async (nextChecked) => {
+  const handleChange = async nextChecked => {
     try {
       setLoading(true);
 
-      const { data } = await api.put(
-        `/menu/update/popular?menuId=${menuId}&status=${nextChecked}`
-      );
+      const position = nextChecked ? currentPosition || 999 : 999;
+
+      const {data} = await updatePopularMenu({
+        menuId,
+        status: nextChecked,
+        position,
+      });
 
       if (data?.success) {
         message.success(data?.message || "Popular status updated successfully");
-        queryClient.invalidateQueries({ queryKey });
+        queryClient.invalidateQueries({queryKey});
       } else {
         message.error(data?.message || "Failed to update popular status");
       }
     } catch (error) {
       message.error(
-        error?.response?.data?.message || "Failed to update popular status"
+        error?.response?.data?.message || "Failed to update popular status",
       );
     } finally {
       setLoading(false);
@@ -278,9 +308,279 @@ function PopularToggle({ menuId, checked, queryKey }) {
   return (
     <Checkbox
       checked={checked}
-      onChange={(e) => handleChange(e.target.checked)}
+      onChange={e => handleChange(e.target.checked)}
       disabled={loading}
     />
+  );
+}
+
+function createRowsFromPopularMenus(popularMenus = []) {
+  if (!Array.isArray(popularMenus) || popularMenus.length === 0) {
+    return [
+      {
+        id: Date.now(),
+        menuId: "",
+        position: 1,
+      },
+    ];
+  }
+
+  return popularMenus
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(a?.popularPositionValue || 999) -
+        Number(b?.popularPositionValue || 999),
+    )
+    .map((item, index) => ({
+      id: `${item._id}-${index}-${Date.now()}`,
+      menuId: item._id || "",
+      position: Number(item.popularPositionValue || index + 1),
+      name: item.titleLabel || item.name || "",
+    }));
+}
+
+function SetPopularMenuButton({queryKey, popularMenus = []}) {
+  const queryClient = useQueryClient();
+
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [rows, setRows] = useState(createRowsFromPopularMenus(popularMenus));
+
+  const openModal = () => {
+    setRows(createRowsFromPopularMenus(popularMenus));
+    setOpen(true);
+  };
+
+  const addRow = () => {
+    setRows(prev => [
+      ...prev,
+      {
+        id: Date.now() + Math.random(),
+        menuId: "",
+        position: prev.length + 1,
+      },
+    ]);
+  };
+
+  const removeRow = id => {
+    setRows(prev => {
+      if (prev.length === 1) {
+        return [
+          {
+            id: Date.now(),
+            menuId: "",
+            position: 1,
+          },
+        ];
+      }
+
+      return prev.filter(item => item.id !== id);
+    });
+  };
+
+  const updateRow = (id, key, value) => {
+    setRows(prev =>
+      prev.map(item =>
+        item.id === id
+          ? {
+              ...item,
+              [key]: value,
+            }
+          : item,
+      ),
+    );
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+  };
+
+  const handleSubmit = async () => {
+    const cleanedRows = rows
+      .map(item => ({
+        menuId: String(item.menuId || "").trim(),
+        position: Number(item.position || 0),
+      }))
+      .filter(item => item.menuId);
+
+    const hasInvalidPosition = cleanedRows.some(
+      item => !Number.isFinite(item.position) || item.position <= 0,
+    );
+
+    if (cleanedRows.length === 0) {
+      message.error("Please enter at least one menu ID.");
+      return;
+    }
+
+    if (hasInvalidPosition) {
+      message.error("Position must be greater than 0.");
+      return;
+    }
+
+    const duplicateMenuIds = cleanedRows
+      .map(item => item.menuId)
+      .filter((menuId, index, arr) => arr.indexOf(menuId) !== index);
+
+    if (duplicateMenuIds.length > 0) {
+      message.error("Same menu ID cannot be used multiple times.");
+      return;
+    }
+
+    const duplicatePositions = cleanedRows
+      .map(item => item.position)
+      .filter((position, index, arr) => arr.indexOf(position) !== index);
+
+    if (duplicatePositions.length > 0) {
+      message.error("Same position cannot be used multiple times.");
+      return;
+    }
+
+    const submittedMenuIds = cleanedRows.map(item => item.menuId);
+
+    const removedPopularMenus = popularMenus.filter(
+      item => item?._id && !submittedMenuIds.includes(item._id),
+    );
+
+    try {
+      setSaving(true);
+
+      const turnOnRequests = cleanedRows.map(item =>
+        updatePopularMenu({
+          menuId: item.menuId,
+          status: true,
+          position: item.position,
+        }),
+      );
+
+      const turnOffRequests = removedPopularMenus.map(item =>
+        updatePopularMenu({
+          menuId: item._id,
+          status: false,
+          position: 999,
+        }),
+      );
+
+      const results = await Promise.allSettled([
+        ...turnOnRequests,
+        ...turnOffRequests,
+      ]);
+
+      const successCount = results.filter(
+        result => result.status === "fulfilled" && result.value?.data?.success,
+      ).length;
+
+      const failedCount = results.length - successCount;
+
+      if (successCount > 0) {
+        message.success(`${cleanedRows.length} popular menu saved successfully.`);
+        queryClient.invalidateQueries({queryKey});
+      }
+
+      if (failedCount > 0) {
+        message.warning(
+          `${failedCount} menu failed to update. Please check menu ID.`,
+        );
+      }
+
+      setRows(
+        cleanedRows.map((item, index) => ({
+          id: `${item.menuId}-${item.position}-${Date.now()}-${index}`,
+          menuId: item.menuId,
+          position: item.position,
+        })),
+      );
+    } catch (error) {
+      message.error(
+        error?.response?.data?.message || "Failed to set popular menu.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        size="large"
+        type="primary"
+        icon={<Flame size={16} />}
+        onClick={openModal}
+        className="bg-purple-600">
+        Set Popular Menu
+      </Button>
+
+      <Modal
+        open={open}
+        title="Set Popular Menu"
+        onCancel={handleClose}
+        onOk={handleSubmit}
+        okText="Save Popular Menu"
+        confirmLoading={saving}
+        width={720}>
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-purple-100 bg-purple-50 p-4">
+            <p className="text-sm font-semibold text-purple-800">
+              Previous popular menu IDs are loaded here. Edit the menu ID or
+              position, remove old rows, then save to replace the popular menu
+              order.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {rows.map((row, index) => (
+              <div
+                key={row.id}
+                className="grid grid-cols-12 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="col-span-12 md:col-span-1">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700">
+                    {index + 1}
+                  </div>
+                </div>
+
+                <div className="col-span-12 md:col-span-7">
+                  <Input
+                    value={row.menuId}
+                    onChange={e => updateRow(row.id, "menuId", e.target.value)}
+                    placeholder="Paste menu ID here"
+                    allowClear
+                  />
+
+                  {row.name ? (
+                    <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                      {row.name}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="col-span-10 md:col-span-3">
+                  <InputNumber
+                    min={1}
+                    value={row.position}
+                    onChange={value => updateRow(row.id, "position", value)}
+                    placeholder="Position"
+                    style={{width: "100%"}}
+                  />
+                </div>
+
+                <div className="col-span-2 flex justify-end md:col-span-1">
+                  <Button
+                    danger
+                    type="text"
+                    icon={<Trash2 size={16} />}
+                    onClick={() => removeRow(row.id)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Button block type="dashed" icon={<Plus size={16} />} onClick={addRow}>
+            Add another popular menu
+          </Button>
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -297,19 +597,22 @@ async function fetchAllRestaurants(zoneId) {
       limit,
     });
 
-    const rows = Array.isArray(response?.data?.result) ? response.data.result : [];
+    const rows = Array.isArray(response?.data?.result)
+      ? response.data.result
+      : [];
+
     items = [...items, ...rows];
 
     if (!rows.length || rows.length < limit) break;
     page += 1;
   }
 
-  return Array.from(new Map(items.map((item) => [item._id, item])).values());
+  return Array.from(new Map(items.map(item => [item._id, item])).values());
 }
 
 async function fetchAllMenusByZone(zoneId) {
   const restaurants = await fetchAllRestaurants(zoneId);
-  const restaurantIds = restaurants.map((item) => item?._id).filter(Boolean);
+  const restaurantIds = restaurants.map(item => item?._id).filter(Boolean);
 
   const menuChunks = [];
   const chunkSize = 5;
@@ -318,9 +621,9 @@ async function fetchAllMenusByZone(zoneId) {
     const chunk = restaurantIds.slice(i, i + chunkSize);
 
     const results = await Promise.allSettled(
-      chunk.map((restaurantId) =>
-        api.get(`/zone/restaurant/menu-list/${restaurantId}`)
-      )
+      chunk.map(restaurantId =>
+        api.get(`/zone/restaurant/menu-list/${restaurantId}`),
+      ),
     );
 
     results.forEach((result, index) => {
@@ -331,7 +634,7 @@ async function fetchAllMenusByZone(zoneId) {
         ? result.value.data.result
         : [];
 
-      const mapped = rows.map((menu) => ({
+      const mapped = rows.map(menu => ({
         ...menu,
         sourceRestaurantId: restaurantId,
       }));
@@ -340,11 +643,11 @@ async function fetchAllMenusByZone(zoneId) {
     });
   }
 
-  return Array.from(new Map(menuChunks.map((item) => [item._id, item])).values());
+  return Array.from(new Map(menuChunks.map(item => [item._id, item])).values());
 }
 
 function AllMenus() {
-  const { user } = useAuth();
+  const {user} = useAuth();
   const zoneId = user?.zoneId || user?.zoneID || user?.zone?._id || null;
 
   const [statusFilter, setStatusFilter] = useState("all");
@@ -355,7 +658,11 @@ function AllMenus() {
 
   const queryKey = ["all-menus", zoneId];
 
-  const { data: rawMenuData = [], isLoading, isFetching } = useQuery({
+  const {
+    data: rawMenuData = [],
+    isLoading,
+    isFetching,
+  } = useQuery({
     queryFn: () => fetchAllMenusByZone(zoneId),
     queryKey,
     enabled: !!zoneId,
@@ -365,19 +672,38 @@ function AllMenus() {
 
   const menuData = useMemo(() => rawMenuData.map(normalizeMenu), [rawMenuData]);
 
+  const popularMenuRows = useMemo(() => {
+    return menuData
+      .filter(item => item.isPopularBool)
+      .sort(
+        (a, b) =>
+          Number(a.popularPositionValue || 999) -
+          Number(b.popularPositionValue || 999),
+      );
+  }, [menuData]);
+
   const categoryOptions = useMemo(() => {
-    const set = new Set(menuData.map((item) => item.categoryLabel).filter(Boolean));
+    const set = new Set(
+      menuData.map(item => item.categoryLabel).filter(Boolean),
+    );
+
     return Array.from(set);
   }, [menuData]);
 
   const filteredData = useMemo(() => {
-    return menuData.filter((item) => {
-      const rowStatus = String(statusDrafts[item._id] || item.status || "").toLowerCase();
+    return menuData.filter(item => {
+      const rowStatus = String(
+        statusDrafts[item._id] || item.status || "",
+      ).toLowerCase();
+
       const menuIdValue = String(item._id || "").toLowerCase();
-      const restaurantValue = String(item.restaurantIdLabel || "").toLowerCase();
+      const restaurantValue = String(
+        item.restaurantIdLabel || "",
+      ).toLowerCase();
 
       const matchesStatus =
-        statusFilter === "all" || rowStatus === String(statusFilter).toLowerCase();
+        statusFilter === "all" ||
+        rowStatus === String(statusFilter).toLowerCase();
 
       const matchesCategory =
         categoryFilter === "all" || item.categoryLabel === categoryFilter;
@@ -390,7 +716,9 @@ function AllMenus() {
         ? true
         : restaurantValue.includes(restaurantIdSearch.trim().toLowerCase());
 
-      return matchesStatus && matchesCategory && matchesMenuId && matchesRestaurantId;
+      return (
+        matchesStatus && matchesCategory && matchesMenuId && matchesRestaurantId
+      );
     });
   }, [
     menuData,
@@ -405,11 +733,12 @@ function AllMenus() {
     return {
       total: filteredData.length,
       inStock: filteredData.filter(
-        (item) =>
-          String(statusDrafts[item._id] || item.status).toLowerCase() === "in stock"
+        item =>
+          String(statusDrafts[item._id] || item.status).toLowerCase() ===
+          "in stock",
       ).length,
-      approved: filteredData.filter((item) => !!item.isApprovedBool).length,
-      popular: filteredData.filter((item) => !!item.isPopularBool).length,
+      approved: filteredData.filter(item => !!item.isApprovedBool).length,
+      popular: filteredData.filter(item => !!item.isPopularBool).length,
     };
   }, [filteredData, statusDrafts]);
 
@@ -428,7 +757,7 @@ function AllMenus() {
       dataIndex: "_id",
       key: "_id",
       width: 180,
-      render: (value) => (
+      render: value => (
         <Text copyable className="text-xs text-slate-600">
           {value}
         </Text>
@@ -455,14 +784,14 @@ function AllMenus() {
       dataIndex: "restaurantIdLabel",
       key: "restaurantIdLabel",
       width: 190,
-      render: (value) => <Text copyable className="text-xs">{value}</Text>,
+      render: value => <Text copyable className="text-xs">{value}</Text>,
     },
     {
       title: "Category",
       dataIndex: "categoryLabel",
       key: "categoryLabel",
       width: 150,
-      render: (value) => <Tag color="blue">{value}</Tag>,
+      render: value => <Tag color="blue">{value}</Tag>,
     },
     {
       title: "Status",
@@ -478,7 +807,7 @@ function AllMenus() {
       dataIndex: "titleLabel",
       key: "titleLabel",
       width: 180,
-      render: (value) => <Text strong>{value}</Text>,
+      render: value => <Text strong>{value}</Text>,
     },
     {
       title: "Description",
@@ -486,14 +815,14 @@ function AllMenus() {
       key: "descriptionLabel",
       width: 220,
       ellipsis: true,
-      render: (value) => <Text className="text-slate-600">{value}</Text>,
+      render: value => <Text className="text-slate-600">{value}</Text>,
     },
     {
       title: "Based Price",
       dataIndex: "basedPriceValue",
       key: "basedPriceValue",
       width: 120,
-      render: (value) => (
+      render: value => (
         <Text strong className="text-green-600">
           {formatMoney(value)}
         </Text>
@@ -504,7 +833,7 @@ function AllMenus() {
       dataIndex: "plateformFeeValue",
       key: "plateformFeeValue",
       width: 120,
-      render: (value) => (
+      render: value => (
         <Text strong className="text-slate-600">
           {formatMoney(value)}
         </Text>
@@ -515,7 +844,7 @@ function AllMenus() {
       dataIndex: "sellingPrice",
       key: "sellingPrice",
       width: 150,
-      render: (value) => (
+      render: value => (
         <Text strong className="text-blue-600">
           {formatMoney(value)}
         </Text>
@@ -526,7 +855,7 @@ function AllMenus() {
       dataIndex: "discountRateValue",
       key: "discountRateValue",
       width: 100,
-      render: (value) => (
+      render: value => (
         <Text strong className="text-orange-500">
           {Number(value || 0)}%
         </Text>
@@ -537,7 +866,7 @@ function AllMenus() {
       dataIndex: "calculatedOfferPrice",
       key: "calculatedOfferPrice",
       width: 120,
-      render: (value) => (
+      render: value => (
         <Text strong className="text-red-500">
           {formatMoney(value)}
         </Text>
@@ -551,14 +880,14 @@ function AllMenus() {
         <Select
           size="small"
           value={statusDrafts[record._id] || record.status || "in stock"}
-          style={{ width: 130 }}
+          style={{width: 130}}
           options={[
-            { label: "in stock", value: "in stock" },
-            { label: "out of stock", value: "out of stock" },
-            { label: "discontinued", value: "discontinued" },
+            {label: "in stock", value: "in stock"},
+            {label: "out of stock", value: "out of stock"},
+            {label: "discontinued", value: "discontinued"},
           ]}
-          onChange={(value) =>
-            setStatusDrafts((prev) => ({
+          onChange={value =>
+            setStatusDrafts(prev => ({
               ...prev,
               [record._id]: value,
             }))
@@ -610,9 +939,21 @@ function AllMenus() {
         <PopularToggle
           menuId={record._id}
           checked={record.isPopularBool}
+          currentPosition={record.popularPositionValue}
           queryKey={queryKey}
         />
       ),
+    },
+    {
+      title: "Popular Position",
+      key: "popularPosition",
+      width: 140,
+      render: (_, record) =>
+        record.isPopularBool ? (
+          <Tag color="purple">#{record.popularPositionValue || 999}</Tag>
+        ) : (
+          <Tag>Not popular</Tag>
+        ),
     },
   ];
 
@@ -635,19 +976,29 @@ function AllMenus() {
               <p className="text-[11px] uppercase tracking-[0.28em] text-blue-600">
                 Food Verse Agent Menu Control
               </p>
-              <Title level={2} style={{ margin: "8px 0 0", fontWeight: 900 }}>
+
+              <Title level={2} style={{margin: "8px 0 0", fontWeight: 900}}>
                 All Menus
               </Title>
+
               <Text type="secondary">
-                All restaurant menus together with pricing, approval and control columns.
+                All restaurant menus together with pricing, approval, popular
+                position and control columns.
               </Text>
             </div>
 
-            <div className="flex items-center gap-2 self-start rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <Badge status={isFetching ? "processing" : "success"} />
-              <span className="text-sm font-medium text-slate-700">
-                {isFetching ? "Refreshing data..." : "Live data ready"}
-              </span>
+            <div className="flex flex-col gap-2 self-start md:flex-row md:items-center">
+              <SetPopularMenuButton
+                queryKey={queryKey}
+                popularMenus={popularMenuRows}
+              />
+
+              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <Badge status={isFetching ? "processing" : "success"} />
+                <span className="text-sm font-medium text-slate-700">
+                  {isFetching ? "Refreshing data..." : "Live data ready"}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -658,18 +1009,21 @@ function AllMenus() {
               value={stats.total}
               hint="Filtered result count"
             />
+
             <StatsCard
               icon={CheckCircle2}
               label="In Stock"
               value={stats.inStock}
               hint="Available menu items"
             />
+
             <StatsCard
               icon={ShieldCheck}
               label="Approved"
               value={stats.approved}
               hint="Admin approved items"
             />
+
             <StatsCard
               icon={Flame}
               label="Popular"
@@ -683,10 +1037,10 @@ function AllMenus() {
               value={statusFilter}
               onChange={setStatusFilter}
               options={[
-                { label: "all", value: "all" },
-                { label: "in stock", value: "in stock" },
-                { label: "out of stock", value: "out of stock" },
-                { label: "discontinued", value: "discontinued" },
+                {label: "all", value: "all"},
+                {label: "in stock", value: "in stock"},
+                {label: "out of stock", value: "out of stock"},
+                {label: "discontinued", value: "discontinued"},
               ]}
               size="large"
             />
@@ -695,8 +1049,8 @@ function AllMenus() {
               value={categoryFilter}
               onChange={setCategoryFilter}
               options={[
-                { label: "Filter category", value: "all" },
-                ...categoryOptions.map((item) => ({
+                {label: "Filter category", value: "all"},
+                ...categoryOptions.map(item => ({
                   label: item,
                   value: item,
                 })),
@@ -710,7 +1064,7 @@ function AllMenus() {
               placeholder="Input menu id"
               prefix={<Search size={15} className="text-slate-400" />}
               value={menuIdSearch}
-              onChange={(e) => setMenuIdSearch(e.target.value)}
+              onChange={e => setMenuIdSearch(e.target.value)}
               onSearch={setMenuIdSearch}
             />
 
@@ -720,7 +1074,7 @@ function AllMenus() {
               placeholder="Input restaurant id"
               prefix={<Store size={15} className="text-slate-400" />}
               value={restaurantIdSearch}
-              onChange={(e) => setRestaurantIdSearch(e.target.value)}
+              onChange={e => setRestaurantIdSearch(e.target.value)}
               onSearch={setRestaurantIdSearch}
             />
 
@@ -731,8 +1085,7 @@ function AllMenus() {
                 setCategoryFilter("all");
                 setMenuIdSearch("");
                 setRestaurantIdSearch("");
-              }}
-            >
+              }}>
               Clear Filters
             </Button>
           </div>
@@ -743,8 +1096,12 @@ function AllMenus() {
             rowKey="_id"
             columns={columns}
             dataSource={filteredData}
-            pagination={{ pageSize: 20, showSizeChanger: false, position: ["bottomRight"] }}
-            scroll={{ x: 2600 }}
+            pagination={{
+              pageSize: 20,
+              showSizeChanger: false,
+              position: ["bottomRight"],
+            }}
+            scroll={{x: 2800}}
             size="middle"
             bordered={false}
           />

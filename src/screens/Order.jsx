@@ -37,6 +37,12 @@ import OrderTimeline from "../components/orders/OrderTimeline";
 const { Title, Text } = Typography;
 
 const toNumber = (value) => {
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[৳,+\s]/g, "");
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  }
+
   const n = Number(value || 0);
   return Number.isFinite(n) ? n : 0;
 };
@@ -46,29 +52,67 @@ const formatMoney = (value) => {
 };
 
 const getItemUnitPrice = (item) => {
-  const offerPrice = toNumber(item?.offerPrice);
+  const basedPrice = toNumber(item?.basedPrice ?? item?.basePrice);
+  const platformFee = toNumber(
+    item?.plateformFee ??
+      item?.platformFee ??
+      item?.platformFees ??
+      item?.adminFee ??
+      item?.serviceFee ??
+      0
+  );
 
-  if (offerPrice > 0) {
-    return offerPrice;
+  const beforeDiscount = basedPrice + platformFee;
+
+  if (beforeDiscount > 0) {
+    const directDiscount = toNumber(
+      item?.discountAmount ??
+        item?.menuDiscountAmount ??
+        item?.offerDiscountAmount ??
+        item?.itemDiscountAmount ??
+        item?.discountValue ??
+        0
+    );
+
+    const discountRate = toNumber(
+      item?.discountRate ??
+        item?.discountPercent ??
+        item?.discountPercentage ??
+        item?.offerDiscount ??
+        item?.discount ??
+        0
+    );
+
+    const discountAmount =
+      directDiscount > 0
+        ? directDiscount
+        : discountRate > 0
+        ? (beforeDiscount * discountRate) / 100
+        : 0;
+
+    return Math.max(0, beforeDiscount - discountAmount);
   }
 
-  const basedPrice = toNumber(item?.basedPrice);
-  const platformFee = toNumber(item?.plateformFee ?? item?.platformFee);
-  const discountRate = toNumber(item?.discountRate);
+  const storedDiscountedPrice = toNumber(
+    item?.discountedPrice ??
+      item?.finalPrice ??
+      item?.finalOfferPrice ??
+      item?.salePrice ??
+      item?.customerPrice ??
+      item?.payablePrice ??
+      0
+  );
 
-  if (basedPrice > 0 || platformFee > 0) {
-    const sellingPrice = basedPrice + platformFee;
-    const discountAmount = (sellingPrice * discountRate) / 100;
-    return Math.max(0, sellingPrice - discountAmount);
+  if (storedDiscountedPrice > 0) {
+    return storedDiscountedPrice;
   }
 
-  const sellingPrice = toNumber(item?.sellingPrice);
-
-  if (sellingPrice > 0) {
-    return sellingPrice;
-  }
-
-  return 0;
+  return (
+    toNumber(item?.sellingPrice) ||
+    toNumber(item?.offerPrice) ||
+    toNumber(item?.price) ||
+    0
+  );
 };
 
 const getItemsSellingTotal = (items = []) => {
@@ -100,27 +144,27 @@ const getVoucherAmount = (record) => {
 };
 
 const getDisplayOrderTotal = (record) => {
+  const items = Array.isArray(record?.items) ? record.items : [];
+  const calculatedItemsTotal = getItemsSellingTotal(items);
+  const addonsTotal = getAddonsTotal(items);
+  const deliveryCharge = getUserDeliveryCharge(record);
+  const riderTip = getRiderTip(record);
+  const voucherAmount = getVoucherAmount(record);
+
+  if (calculatedItemsTotal > 0) {
+    return Math.max(
+      0,
+      calculatedItemsTotal + addonsTotal + deliveryCharge + riderTip - voucherAmount
+    );
+  }
+
   const totalAfterVoucher = toNumber(record?.totalAfterVoucherApplied);
-  const totalAmount = toNumber(record?.totalAmount);
 
   if (totalAfterVoucher > 0) {
     return totalAfterVoucher;
   }
 
-  if (totalAmount > 0) {
-    return totalAmount;
-  }
-
-  const itemsTotal = getItemsSellingTotal(record?.items || []);
-  const addonsTotal = getAddonsTotal(record?.items || []);
-  const deliveryCharge = getUserDeliveryCharge(record);
-  const riderTip = getRiderTip(record);
-  const voucherAmount = getVoucherAmount(record);
-
-  return Math.max(
-    0,
-    itemsTotal + addonsTotal + deliveryCharge + riderTip - voucherAmount
-  );
+  return toNumber(record?.totalAmount);
 };
 
 const StatusBadge = ({ status }) => {
