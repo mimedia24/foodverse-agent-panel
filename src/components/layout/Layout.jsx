@@ -4,13 +4,14 @@ import {
   ShoppingCart,
   Utensils,
   Bike,
-  Settings,
   Menu,
   X,
   LogOut,
   MapPin,
   ListOrdered,
   BarChart3,
+  Trash2,
+  WalletCards,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "../../context/authContext";
@@ -24,7 +25,7 @@ const NavItem = ({ icon: Icon, label, active, onClick }) => (
         : "text-slate-300 hover:bg-white/10 hover:text-white"
     }`}
   >
-    <Icon size={19} />
+    {React.createElement(Icon, { size: 19 })}
     <span className="font-medium">{label}</span>
   </button>
 );
@@ -40,7 +41,7 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
   return (
     <>
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-[280px] bg-[linear-gradient(180deg,#020617_0%,#07132d_100%)] text-white transform transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col bg-[linear-gradient(180deg,#020617_0%,#07132d_100%)] text-white transform transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -62,7 +63,7 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
           </button>
         </div>
 
-        <nav className="px-4 py-5 space-y-2">
+        <nav className="flex-1 space-y-2 overflow-y-auto px-4 py-5">
           <Link to="/" onClick={closeAfterClick}>
             <NavItem
               icon={LayoutDashboard}
@@ -88,6 +89,14 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
               active={location.pathname.includes("/order-map")}
             />
           </Link>          
+
+          <Link to="/order-trash" onClick={closeAfterClick}>
+            <NavItem
+              icon={Trash2}
+              label="Order Trash"
+              active={location.pathname.includes("/order-trash")}
+            />
+          </Link>
 
           <Link to="/restaurants" onClick={closeAfterClick}>
             <NavItem
@@ -124,13 +133,13 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
            />
           </Link>
 
-          <button className="w-full text-left">
+          <Link to="/bkash-ledger" onClick={closeAfterClick}>
             <NavItem
-              icon={Settings}
-              label="Settings"
-              active={location.pathname.includes("/settings")}
+              icon={WalletCards}
+              label="bKash Ledger"
+              active={location.pathname.includes("/bkash-ledger")}
             />
-          </button>
+          </Link>
 
           <div className="pt-4 mt-4 border-t border-white/10">
             <div onClick={() => logout()}>

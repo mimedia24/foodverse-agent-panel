@@ -269,7 +269,7 @@ function Order() {
       if (!result?.data?.length) {
         message.info("No order found for this phone number");
       }
-    } catch (error) {
+    } catch {
       message.error("Failed to search by phone number");
     } finally {
       setSearchLoading(false);
@@ -290,7 +290,7 @@ function Order() {
       if (!result?.data?.length) {
         message.info("No order found for this rider");
       }
-    } catch (error) {
+    } catch {
       message.error("Failed to search by rider id");
     } finally {
       setSearchLoading(false);

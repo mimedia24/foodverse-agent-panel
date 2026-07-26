@@ -43,6 +43,64 @@ class OrderService {
     }
   }
 
+  static async getArchivedOrders({
+    page = 1,
+    limit = 20,
+    search = "",
+    status = "",
+    startDate = "",
+    endDate = "",
+  } = {}) {
+    const { data } = await api.get("/zone/orders/archived", {
+      params: {
+        page,
+        limit,
+        search: search || undefined,
+        status: status && status !== "all" ? status : undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+      },
+    });
+    return this.normalizeListResponse(data);
+  }
+
+  static async restoreArchivedOrder(orderId) {
+    const { data } = await api.patch(`/zone/order/${orderId}/restore`);
+    return data;
+  }
+
+  static async getOrderTimeline(orderId) {
+    const { data } = await api.get(`/zone/order/${orderId}/timeline`);
+    return data;
+  }
+
+  static async getOrderMap({
+    date = "",
+    startDate = "",
+    endDate = "",
+    status = "all",
+    allDates = false,
+  } = {}) {
+    const { data } = await api.get("/zone/order-map", {
+      params: {
+        date: date || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        status: status !== "all" ? status : undefined,
+        allDates: allDates ? "true" : undefined,
+      },
+    });
+
+    return {
+      ...data,
+      data: Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.orders)
+        ? data.orders
+        : [],
+    };
+  }
+
   static async getOrdersByUserId(userId, page = 1, limit = 20) {
     try {
       const { data } = await api.get(

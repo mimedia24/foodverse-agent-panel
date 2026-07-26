@@ -17,6 +17,8 @@ import OrderMap from "./screens/OrderMap";
 import AllMenus from "./screens/AllMenus.jsx";
 import Reports from "./screens/Reports.jsx";
 import AgentPartnerLanding from "./screens/AgentPartnerLanding.jsx";
+import OrderTrash from "./screens/OrderTrash.jsx";
+import BkashLedger from "./screens/BkashLedger.jsx";
 
 const queryClient = new QueryClient();
 
@@ -110,6 +112,22 @@ createRoot(document.getElementById("root")).render(
             element={
               <ProtectedRoute>
                 <OrderMap />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/order-trash"
+            element={
+              <ProtectedRoute>
+                <OrderTrash />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/bkash-ledger"
+            element={
+              <ProtectedRoute>
+                <BkashLedger />
               </ProtectedRoute>
             }
           />

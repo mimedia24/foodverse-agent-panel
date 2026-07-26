@@ -528,6 +528,21 @@ async function fetchManualDiscountRequests(zoneId, startDate, endDate) {
     : [];
 }
 
+async function fetchCentralProfitReport(startDate, endDate) {
+  const response = await api.get("/zone/report/profit", {
+    params: { startDate, endDate },
+  });
+  return response.data;
+}
+
+const getTodayBD = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
 
 const normalizeText = (value) => String(value || "").trim().toLowerCase();
 
@@ -678,13 +693,27 @@ function Reports() {
     user?.mobile ||
     "N/A";
 
-  const today = dayjs().format("YYYY-MM-DD");
+  const today = getTodayBD();
 
   const [rangeType, setRangeType] = useState("today");
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [discountAmount, setDiscountAmount] = useState("");
   const [discountNote, setDiscountNote] = useState("");
+
+  const {
+    data: centralReportPayload,
+    isFetching: centralReportFetching,
+    error: centralReportError,
+    refetch: refetchCentralReport,
+  } = useQuery({
+    queryKey: ["central-agent-profit-report", zoneId, startDate, endDate],
+    queryFn: () => fetchCentralProfitReport(startDate, endDate),
+    enabled: !!zoneId && !!startDate && !!endDate,
+    staleTime: 30 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+  });
 
   const {
     data: orders = [],
@@ -817,7 +846,7 @@ function Reports() {
     [selectedDiscounts]
   );
 
-  const restaurantRows = useMemo(() => {
+  const clientRestaurantRows = useMemo(() => {
     const map = new Map();
 
     filteredOrders.forEach((order) => {
@@ -873,7 +902,7 @@ function Reports() {
       .sort((a, b) => b.restaurantSale - a.restaurantSale);
   }, [filteredOrders, restaurantMap]);
 
-  const report = useMemo(() => {
+  const clientReport = useMemo(() => {
     const base = filteredOrders.reduce(
       (acc, order) => {
         const metrics = getOrderMetrics(order);
@@ -917,7 +946,7 @@ function Reports() {
       }
     );
 
-    const restaurantCommissionProfit = restaurantRows.reduce(
+    const restaurantCommissionProfit = clientRestaurantRows.reduce(
       (sum, row) => sum + row.commissionProfit,
       0
     );
@@ -937,9 +966,9 @@ function Reports() {
       manualDiscount: discountTotal,
       netProfit,
     };
-  }, [filteredOrders, restaurantRows, discountTotal]);
+  }, [filteredOrders, clientRestaurantRows, discountTotal]);
 
-  const dailyRows = useMemo(() => {
+  const clientDailyRows = useMemo(() => {
     const dates = new Map();
 
     filteredOrders.forEach((order) => {
@@ -1013,6 +1042,62 @@ function Reports() {
       .sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [filteredOrders, restaurantMap, approvedDiscounts]);
 
+  const report = useMemo(() => {
+    if (!centralReportPayload?.success) return clientReport;
+
+    const summary = centralReportPayload.summary || {};
+    const voucherDetails = (centralReportPayload.orders || [])
+      .filter((order) => num(order.voucherExpense) > 0)
+      .map((order) => ({
+        orderId: order._id,
+        date: order.orderDate,
+        restaurantName: order.restaurantName,
+        customerName: order.customerPhone || "N/A",
+        code: order.voucherCode || "N/A",
+        name: "Voucher",
+        amount: num(order.voucherExpense),
+      }));
+
+    return {
+      restaurantSale: num(summary.restaurantSale),
+      foodSale: num(summary.foodSale),
+      foodMargin: num(summary.foodMargin),
+      deliveryFee: num(summary.deliveryFee),
+      deliveryProfit: num(summary.deliveryProfit),
+      riderTips: num(summary.riderTips),
+      voucherExpense: num(summary.voucherExpense),
+      voucherAppliedOrders: num(summary.voucherAppliedOrders),
+      voucherDetails,
+      restaurantCommissionProfit: num(summary.restaurantCommissionProfit),
+      grossProfit: num(summary.grossProfit),
+      manualDiscount: num(summary.approvedManualDiscount),
+      netProfit: num(summary.netProfit),
+      orderCount: num(summary.completedOrders),
+    };
+  }, [centralReportPayload, clientReport]);
+
+  const restaurantRows = useMemo(() => {
+    if (!centralReportPayload?.success) return clientRestaurantRows;
+    return (centralReportPayload.restaurantRows || []).map((row) => ({
+      ...row,
+      orderCount: num(row.completedOrders),
+      rate: num(row.commissionRate),
+      voucherAppliedOrders: num(row.voucherAppliedOrders),
+      voucherCodes: [],
+    }));
+  }, [centralReportPayload, clientRestaurantRows]);
+
+  const dailyRows = useMemo(() => {
+    if (!centralReportPayload?.success) return clientDailyRows;
+    return (centralReportPayload.dailyRows || []).map((row) => ({
+      ...row,
+      orderCount: num(row.completedOrders),
+      deliveryProfit: num(row.deliveryProfit),
+      voucherAppliedOrders: num(row.voucherAppliedOrders),
+      manualDiscount: 0,
+    }));
+  }, [centralReportPayload, clientDailyRows]);
+
   const addDiscount = async () => {
     if (!num(discountAmount) || startDate !== endDate) {
       message.error(
@@ -1058,6 +1143,7 @@ function Reports() {
     await Promise.all([
       refetchOrders(),
       refetchRestaurants(),
+      refetchCentralReport(),
       refetchApprovedDiscounts(),
       refetchManualDiscountRequests(),
     ]);
@@ -1103,7 +1189,11 @@ function Reports() {
           text: shareText,
         });
         return;
-      } catch {}
+      } catch (shareError) {
+        if (shareError?.name !== "AbortError") {
+          console.warn("Native share failed:", shareError);
+        }
+      }
     }
 
     try {
@@ -1437,7 +1527,10 @@ function Reports() {
                 <RefreshCcw
                   size={16}
                   className={
-                    ordersFetching || restaurantsFetching || discountsFetching
+                    centralReportFetching ||
+                    ordersFetching ||
+                    restaurantsFetching ||
+                    discountsFetching
                       ? "animate-spin"
                       : ""
                   }
@@ -1528,6 +1621,13 @@ function Reports() {
             </div>
           </div>
         </div>
+
+        {centralReportError ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {centralReportError?.response?.data?.message ||
+              "Central server report is unavailable. Refresh after checking the server."}
+          </div>
+        ) : null}
 
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="rounded-[30px] bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-500 p-5 text-white shadow-lg">

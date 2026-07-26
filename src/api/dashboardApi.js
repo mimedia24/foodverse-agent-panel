@@ -869,7 +869,11 @@ export async function fetchDashboardData(user) {
   const summary = buildSummaryFromOrders(monthOrders);
 
   return {
-    zoneName: user?.zoneName || user?.name || `Zone ${zoneId}`,
+    zoneName:
+      user?.agentName ||
+      user?.businessName ||
+      user?.zoneName ||
+      `Zone ${zoneId}`,
     stats: normalizeStats({
       todayOrders: summary.today.count,
       totalOrders,

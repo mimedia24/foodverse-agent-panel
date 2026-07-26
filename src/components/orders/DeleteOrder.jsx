@@ -8,7 +8,7 @@ function DeleteOrder({ orderId }) {
   const [deleteResponseModal, setDeleteResponseModal] = useState({
     visible: false,
     message: "",
-    title: "Delete Order",
+    title: "Move Order to Trash",
     type: "info",
   });
 
@@ -20,11 +20,15 @@ function DeleteOrder({ orderId }) {
       setLoading(true);
       const { data } = await api.delete(`/zone/order/${orderId}`);
       if (data.success) {
-        queryClient.invalidateQueries({ queryKey: ["orders"] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["orders"] }),
+          queryClient.invalidateQueries({ queryKey: ["archived-orders"] }),
+          queryClient.invalidateQueries({ queryKey: ["order-map-orders"] }),
+        ]);
         setDeleteResponseModal((prev) => ({
           ...prev,
           visible: true,
-          message: "Delete successful",
+          message: data?.message || "Order moved to Trash successfully.",
           type: "success",
         }));
       }
@@ -32,7 +36,9 @@ function DeleteOrder({ orderId }) {
       setDeleteResponseModal((prev) => ({
         ...prev,
         visible: true,
-        message: error.message,
+        message:
+          error?.response?.data?.message ||
+          "Only cancelled or delivered orders can be moved to Trash.",
         type: "warning",
       }));
     } finally {
@@ -43,14 +49,14 @@ function DeleteOrder({ orderId }) {
   return (
     <div>
       <Popconfirm
-        title="Delete the order"
-        description="Are you sure?"
+        title="Move this order to Trash?"
+        description="The order can be restored later. Active orders must be cancelled first."
         onConfirm={() => handleDeleteOrder(orderId)}
         okText="Yes"
         cancelText="No"
       >
-        <Button size="small" danger>
-          Del
+        <Button size="small" danger loading={loading}>
+          Trash
         </Button>
       </Popconfirm>
 

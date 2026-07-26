@@ -23,7 +23,7 @@ import {
   Cake,
   Wallet,
 } from "lucide-react";
-import { image_uri } from "../utils/constants";
+import { normalizeImageUrl, useImageFallback } from "../utils/image";
 import api from "../api/config";
 import { useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
@@ -241,7 +241,8 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
     <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm transition duration-300 hover:shadow-xl">
       <div className="relative h-56 md:h-72">
         <img
-          src={`${image_uri}${res.image}`}
+          src={normalizeImageUrl(res.image || res.restaurantImage)}
+          onError={useImageFallback}
           alt={restaurantName}
           className="h-full w-full object-cover"
         />

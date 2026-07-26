@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { createElement, useCallback, useEffect, useMemo, useState } from "react";
 import Layout from "../components/layout/Layout";
 import { fetchDashboardData } from "../api/dashboardApi";
 import api from "../api/config";
@@ -286,7 +286,7 @@ const getCachedDashboardOrders = (zoneId) => {
     }
 
     return orders;
-  } catch (error) {
+  } catch {
     return null;
   }
 };
@@ -297,7 +297,7 @@ const setCachedDashboardOrders = (zoneId, orders = []) => {
       getDashboardOrderCacheKey(zoneId),
       JSON.stringify({ createdAt: Date.now(), orders })
     );
-  } catch (error) {
+  } catch {
     // Ignore cache write errors.
   }
 };
@@ -848,7 +848,7 @@ function AnimatedValue({ value, money = false, className = "" }) {
 function HeroChip({ icon: Icon, label }) {
   return (
     <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 backdrop-blur">
-      <Icon className="h-3.5 w-3.5" />
+      {createElement(Icon, { className: "h-3.5 w-3.5" })}
       {label}
     </div>
   );
@@ -1183,7 +1183,7 @@ export default function Dashboard() {
     salesSummary: [],
   });
 
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     if (!user?.zoneId) return;
 
     try {
@@ -1205,7 +1205,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -1217,7 +1217,7 @@ export default function Dashboard() {
     }
 
     loadDashboard();
-  }, [authLoading, user?.zoneId]);
+  }, [authLoading, user?.zoneId, loadDashboard]);
 
   const heroLabels = useMemo(
     () => [
@@ -1310,7 +1310,11 @@ export default function Dashboard() {
             </p>
 
             <h2 className="mt-4 text-4xl font-black tracking-tight md:text-6xl">
-              {data.zoneName || user?.name || "Zone Dashboard"}
+              {user?.agentName ||
+                user?.businessName ||
+                data.zoneName ||
+                user?.zoneName ||
+                "Zone Dashboard"}
             </h2>
 
             <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-200 md:text-base">

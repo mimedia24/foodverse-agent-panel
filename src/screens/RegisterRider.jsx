@@ -1,6 +1,14 @@
 import React, { useState } from "react";
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
+import { message } from "antd";
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 function RegisterRider() {
   const [formData, setFormData] = useState({
@@ -27,7 +35,22 @@ function RegisterRider() {
 
   const handleFileChange = (e) => {
     const { name, files: selectedFiles } = e.target;
-    setFiles({ ...files, [name]: selectedFiles[0] });
+    const selectedFile = selectedFiles[0];
+    if (!selectedFile) return;
+
+    if (!ALLOWED_IMAGE_TYPES.has(selectedFile.type)) {
+      message.error("Only JPEG, PNG or WebP images are allowed.");
+      e.target.value = "";
+      return;
+    }
+
+    if (selectedFile.size > MAX_IMAGE_SIZE) {
+      message.error("Each image must be 5 MB or smaller.");
+      e.target.value = "";
+      return;
+    }
+
+    setFiles((current) => ({ ...current, [name]: selectedFile }));
   };
 
   const handleSubmit = async (e) => {
@@ -45,7 +68,12 @@ function RegisterRider() {
       !files.nidFront ||
       !files.nidBack
     ) {
-      alert("Please fill all required fields.");
+      message.error("Please fill all required fields.");
+      return;
+    }
+
+    if (!/^01\d{9}$/.test(formData.phone)) {
+      message.error("Phone number must be a valid 11-digit Bangladesh number.");
       return;
     }
 
@@ -66,10 +94,10 @@ function RegisterRider() {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      alert("Rider Registered Successfully");
+      message.success("Rider registered successfully.");
     } catch (error) {
       console.error(error.response?.data || error.message);
-      alert(error.response?.data?.message || "Registration failed");
+      message.error(error.response?.data?.message || "Registration failed");
     } finally {
       setLoading(false);
     }

@@ -220,7 +220,7 @@ const getAddonsTotal = (items = []) => {
 
 function ItemsCard({ items = [] }) {
   const [open, setOpen] = useState(false);
-  const safeItems = Array.isArray(items) ? items : [];
+  const safeItems = useMemo(() => (Array.isArray(items) ? items : []), [items]);
 
   const summary = useMemo(() => {
     const totalRestaurantPrice = safeItems.reduce((sum, item) => {

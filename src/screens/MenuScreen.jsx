@@ -26,7 +26,8 @@ import {
 } from "lucide-react";
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
-import { image_uri } from "../utils/constants";
+import { PLACEHOLDER_IMAGE } from "../utils/constants";
+import { normalizeImageUrl } from "../utils/image";
 
 const { Title, Text } = Typography;
 const { Search: SearchInput } = Input;
@@ -66,12 +67,26 @@ function normalizeMenu(menu) {
   const plateformFeeValue = num(menu?.plateformFee);
   const discountRateValue = num(menu?.discountRate);
 
-  const sellingPrice = calculateSellingPrice(basedPriceValue, plateformFeeValue);
-  const calculatedOfferPrice = calculateOfferPrice(
+  const calculatedSellingPrice = calculateSellingPrice(
     basedPriceValue,
-    plateformFeeValue,
-    discountRateValue
+    plateformFeeValue
   );
+  const sellingPrice =
+    menu?.sellingPrice !== null &&
+    menu?.sellingPrice !== undefined &&
+    Number.isFinite(Number(menu.sellingPrice))
+    ? num(menu.sellingPrice)
+    : calculatedSellingPrice;
+  const calculatedOfferPrice =
+    menu?.offerPrice !== null &&
+    menu?.offerPrice !== undefined &&
+    Number.isFinite(Number(menu.offerPrice))
+    ? num(menu.offerPrice)
+    : calculateOfferPrice(
+        basedPriceValue,
+        plateformFeeValue,
+        discountRateValue
+      );
 
   return {
     ...menu,
@@ -118,7 +133,7 @@ function StatsCard({ icon: Icon, label, value, hint }) {
           <p className="mt-1 text-xs text-slate-500">{hint}</p>
         </div>
         <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 text-blue-600">
-          <Icon size={20} />
+          {React.createElement(Icon, { size: 20 })}
         </div>
       </div>
     </div>
@@ -252,7 +267,7 @@ function ApprovalToggle({ menuId, checked, queryKey }) {
   return <Checkbox checked={checked} onChange={(e) => handleChange(e.target.checked)} disabled={loading} />;
 }
 
-function PopularToggle({ menuId, checked, queryKey }) {
+function PopularToggle({ menuId, checked, queryKey, currentPosition = 999 }) {
   const [loading, setLoading] = useState(false);
   const queryClient = useQueryClient();
 
@@ -260,9 +275,11 @@ function PopularToggle({ menuId, checked, queryKey }) {
     try {
       setLoading(true);
 
-      const { data } = await api.put(
-        `/menu/update/popular?menuId=${menuId}&status=${nextChecked}`
-      );
+      const { data } = await api.put("/zone/menu/update-popular", {
+        menuId,
+        isPopular: nextChecked,
+        position: nextChecked ? currentPosition || 999 : 999,
+      });
 
       if (data?.success) {
         message.success(data?.message || "Popular status updated successfully");
@@ -391,12 +408,12 @@ function MenuScreen() {
       width: 100,
       render: (img, record) => (
         <Image
-          src={`${image_uri}${img}`}
+          src={normalizeImageUrl(img)}
+          fallback={PLACEHOLDER_IMAGE}
           alt={record.titleLabel}
           width={56}
           height={56}
           className="rounded-full object-cover"
-          fallback="https://via.placeholder.com/56"
         />
       ),
     },
@@ -561,6 +578,7 @@ function MenuScreen() {
           menuId={record._id}
           checked={record.isPopularBool}
           queryKey={queryKey}
+          currentPosition={record.popularPositionValue}
         />
       ),
     },

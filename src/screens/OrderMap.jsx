@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import {CalendarDays, MapPin, RefreshCcw, X} from "lucide-react";
 import Layout from "../components/layout/Layout";
-import api from "../api/config";
+import OrderService from "../api/order.service";
 import {useAuth} from "../context/authContext";
 
 dayjs.extend(customParseFormat);
@@ -214,15 +214,6 @@ function getTodayBangladeshDateString() {
   return dayjs().add(6, "hour").format("YYYY-MM-DD");
 }
 
-function orderMatchesSelectedDate(order, selectedDate) {
-  if (!selectedDate) return true;
-
-  const normalDate = getNormalDateString(order);
-  const bdDate = getBangladeshDateString(order);
-
-  return normalDate === selectedDate || bdDate === selectedDate;
-}
-
 function pickLatLng(...sources) {
   for (const source of sources) {
     if (!source) continue;
@@ -373,70 +364,6 @@ function loadGoogleMapsScript(apiKey) {
 
     document.head.appendChild(script);
   });
-}
-
-function extractOrdersFromPayload(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.orders)) return payload.orders;
-  if (Array.isArray(payload?.result)) return payload.result;
-  if (Array.isArray(payload?.results)) return payload.results;
-  if (Array.isArray(payload?.data?.orders)) return payload.data.orders;
-  if (Array.isArray(payload?.data?.result)) return payload.data.result;
-  return [];
-}
-
-function extractTotalCountFromPayload(payload, fallback = 0) {
-  return Number(
-    payload?.totalCount ||
-      payload?.total ||
-      payload?.count ||
-      payload?.data?.totalCount ||
-      payload?.data?.total ||
-      fallback ||
-      0
-  );
-}
-
-async function fetchAllOrders(zoneId) {
-  const limit = 100;
-  const maxPages = 50;
-
-  let page = 1;
-  let allOrders = [];
-  let totalCount = 0;
-
-  while (page <= maxPages) {
-    const response = await api.post(
-      `/zone/order-list?page=${page}&limit=${limit}`,
-      {zoneId}
-    );
-
-    const payload = response?.data;
-    const rows = extractOrdersFromPayload(payload);
-
-    totalCount = extractTotalCountFromPayload(payload, totalCount);
-
-    allOrders = [...allOrders, ...rows];
-
-    if (!rows.length) break;
-    if (rows.length < limit) break;
-    if (totalCount && allOrders.length >= totalCount) break;
-
-    page += 1;
-  }
-
-  const uniqueOrders = Array.from(
-    new Map(allOrders.map((item) => [item._id, item])).values()
-  );
-
-  uniqueOrders.sort((a, b) => {
-    const dateA = getOrderDate(a)?.valueOf() || 0;
-    const dateB = getOrderDate(b)?.valueOf() || 0;
-    return dateB - dateA;
-  });
-
-  return uniqueOrders;
 }
 
 function getDeliveryAmount(order) {
@@ -649,18 +576,26 @@ function OrderMap() {
   const markersRef = useRef([]);
 
   const [mapsReady, setMapsReady] = useState(false);
-  const [mapError, setMapError] = useState("");
+  const [mapError, setMapError] = useState(() =>
+    apiKey ? "" : "Google Maps API key is missing."
+  );
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedDate, setSelectedDate] = useState(getTodayBangladeshDateString());
   const [selectedStatus, setSelectedStatus] = useState("all");
 
   const {
-    data: apiOrders = [],
+    data: mapPayload,
     isFetching,
+    error: mapQueryError,
     refetch,
   } = useQuery({
-    queryKey: ["order-map-orders", zoneId],
-    queryFn: () => fetchAllOrders(zoneId),
+    queryKey: ["order-map-orders", zoneId, selectedDate, selectedStatus],
+    queryFn: () =>
+      OrderService.getOrderMap({
+        date: selectedDate,
+        status: selectedStatus,
+        allDates: !selectedDate,
+      }),
     enabled: !!zoneId,
     staleTime: 0,
     refetchOnMount: "always",
@@ -669,11 +604,25 @@ function OrderMap() {
     refetchIntervalInBackground: false,
   });
 
+  const {data: allDatePayload} = useQuery({
+    queryKey: ["order-map-available-dates", zoneId],
+    queryFn: () => OrderService.getOrderMap({allDates: true}),
+    enabled: !!zoneId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const apiOrders = useMemo(
+    () => (Array.isArray(mapPayload?.data) ? mapPayload.data : []),
+    [mapPayload],
+  );
+  const allDateOrders = useMemo(
+    () => (Array.isArray(allDatePayload?.data) ? allDatePayload.data : []),
+    [allDatePayload],
+  );
+
   useEffect(() => {
-    if (!apiKey) {
-      setMapError("Google Maps API key is missing.");
-      return;
-    }
+    if (!apiKey) return;
 
     let cancelled = false;
 
@@ -723,7 +672,7 @@ function OrderMap() {
   const availableDates = useMemo(() => {
     const map = new Map();
 
-    apiOrders.forEach((order) => {
+    allDateOrders.forEach((order) => {
       const normalDate = getNormalDateString(order);
       const bdDate = getBangladeshDateString(order);
 
@@ -739,56 +688,22 @@ function OrderMap() {
     return Array.from(map.entries())
       .sort((a, b) => dayjs(b[0]).valueOf() - dayjs(a[0]).valueOf())
       .map(([date, count]) => ({date, count}));
-  }, [apiOrders]);
-
-  const dateFilteredOrders = useMemo(() => {
-    let rows = Array.isArray(apiOrders) ? [...apiOrders] : [];
-
-    if (selectedDate) {
-      rows = rows.filter((order) => orderMatchesSelectedDate(order, selectedDate));
-    }
-
-    rows.sort((a, b) => {
-      const dateA = getOrderDate(a)?.valueOf() || 0;
-      const dateB = getOrderDate(b)?.valueOf() || 0;
-      return dateB - dateA;
-    });
-
-    return rows;
-  }, [apiOrders, selectedDate]);
-
-  const filteredOrders = useMemo(() => {
-    let rows = [...dateFilteredOrders];
-
-    if (selectedStatus !== "all") {
-      rows = rows.filter(
-        (order) => normalizeStatus(order?.status) === selectedStatus
-      );
-    }
-
-    return rows;
-  }, [dateFilteredOrders, selectedStatus]);
+  }, [allDateOrders]);
 
   const ordersWithCoords = useMemo(() => {
-    return filteredOrders
+    return apiOrders
       .map((order) => ({
         ...order,
         _coords: getOrderCoords(order),
       }))
       .filter((order) => order._coords);
-  }, [filteredOrders]);
+  }, [apiOrders]);
 
-  useEffect(() => {
-    if (selectedOrder) {
-      const stillExists = ordersWithCoords.some(
-        (order) => order._id === selectedOrder._id
-      );
-
-      if (!stillExists) {
-        setSelectedOrder(null);
-      }
-    }
-  }, [ordersWithCoords, selectedOrder]);
+  const visibleSelectedOrder =
+    selectedOrder &&
+    ordersWithCoords.some((order) => order._id === selectedOrder._id)
+      ? selectedOrder
+      : null;
 
   useEffect(() => {
     if (!mapsReady || !mapRef.current || !window.google?.maps) return;
@@ -905,9 +820,9 @@ function OrderMap() {
                   </p>
 
                   <p className="mt-2 text-xs font-medium text-slate-400">
-                    Raw {apiOrders.length} orders • Date matched{" "}
-                    {dateFilteredOrders.length} • Showing{" "}
-                    {ordersWithCoords.length} mapped order
+                    Raw {mapPayload?.rawCount ?? apiOrders.length} orders • Date matched{" "}
+                    {mapPayload?.dateMatchedCount ?? apiOrders.length} • Showing{" "}
+                    {mapPayload?.mappedCount ?? ordersWithCoords.length} mapped order
                     {ordersWithCoords.length !== 1 ? "s" : ""}
                     {selectedDate
                       ? ` for ${dayjs(selectedDate).format("DD MMM YYYY")}`
@@ -929,14 +844,20 @@ function OrderMap() {
                     <input
                       type="date"
                       value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedOrder(null);
+                        setSelectedDate(e.target.value);
+                      }}
                       className="w-full bg-transparent text-sm text-slate-700 outline-none"
                     />
                   </div>
 
                   <select
                     value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedOrder(null);
+                      setSelectedDate(e.target.value);
+                    }}
                     className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
                   >
                     <option value="">All Available Dates</option>
@@ -949,7 +870,10 @@ function OrderMap() {
 
                   <div className="mt-2 flex gap-2">
                     <button
-                      onClick={() => setSelectedDate(getTodayBangladeshDateString())}
+                      onClick={() => {
+                        setSelectedOrder(null);
+                        setSelectedDate(getTodayBangladeshDateString());
+                      }}
                       className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
                         selectedDate === getTodayBangladeshDateString()
                           ? "border-slate-900 bg-slate-900 text-white"
@@ -960,7 +884,10 @@ function OrderMap() {
                     </button>
 
                     <button
-                      onClick={() => setSelectedDate("")}
+                      onClick={() => {
+                        setSelectedOrder(null);
+                        setSelectedDate("");
+                      }}
                       className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
                         selectedDate === ""
                           ? "border-slate-900 bg-slate-900 text-white"
@@ -979,7 +906,10 @@ function OrderMap() {
                     key={statusKey}
                     statusKey={statusKey}
                     selectedStatus={selectedStatus}
-                    onClick={() => setSelectedStatus(statusKey)}
+                    onClick={() => {
+                      setSelectedOrder(null);
+                      setSelectedStatus(statusKey);
+                    }}
                   />
                 ))}
               </div>
@@ -1009,7 +939,7 @@ function OrderMap() {
                 ? ` with ${getStatusConfig(selectedStatus).label} status`
                 : ""}
               .{" "}
-              {filteredOrders.length > 0
+              {Number(mapPayload?.rawCount || apiOrders.length) > 0
                 ? "Some orders do not have location coordinates."
                 : ""}
             </div>
@@ -1017,9 +947,14 @@ function OrderMap() {
         ) : null}
 
         <OrderDetailsModal
-          order={selectedOrder}
+          order={visibleSelectedOrder}
           onClose={() => setSelectedOrder(null)}
         />
+        {mapQueryError ? (
+          <div className="absolute bottom-4 left-4 z-20 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-lg">
+            {mapQueryError?.response?.data?.message || "Failed to load map orders."}
+          </div>
+        ) : null}
       </div>
     </Layout>
   );

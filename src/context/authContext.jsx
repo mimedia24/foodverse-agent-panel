@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { useNavigate } from "react-router";
 import api from "../api/config";
 
-import { jwtDecode } from "jwt-decode";
-import LocalStorageService from "../utils/localstorage";
-
 const AuthContext = createContext(null);
+
+const normalizeAgent = (value = {}) => ({
+  ...value,
+  agentName: value.agentName || value.businessName || value.zoneName || value.name,
+  managerName: value.managerName || value.name || "",
+});
 
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -30,7 +32,7 @@ const AuthProvider = ({ children }) => {
         localStorage.setItem("accessToken", data.result.accessToken);
         localStorage.setItem("userId", data.result.user._id);
         setIsLoggedin(true);
-        setUser(data.result.user);
+        setUser(normalizeAgent(data.result.user));
       }
     } catch (error) {
       setIsLoggedin(false);
@@ -71,7 +73,7 @@ const AuthProvider = ({ children }) => {
           },
         });
         if (data.success) {
-          setUser(data.result);
+          setUser(normalizeAgent(data.result));
           setIsLoggedin(true);
         } else {
           localStorage.removeItem("accessToken");
@@ -104,6 +106,7 @@ const AuthProvider = ({ children }) => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

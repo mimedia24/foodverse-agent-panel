@@ -27,16 +27,17 @@ import {
 } from "lucide-react";
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
-import {image_uri} from "../utils/constants";
+import {PLACEHOLDER_IMAGE} from "../utils/constants";
+import {normalizeImageUrl} from "../utils/image";
 import {useAuth} from "../context/authContext";
 
 const {Title, Text} = Typography;
 const {Search: SearchInput} = Input;
 
-const updatePopularMenu = ({menuId, status, position}) => {
+const updatePopularMenu = ({menuId, isPopular, position}) => {
   return api.put("/zone/menu/update-popular", {
     menuId,
-    status,
+    isPopular,
     position,
   });
 };
@@ -79,12 +80,26 @@ function normalizeMenu(menu) {
   const plateformFeeValue = num(menu?.plateformFee);
   const discountRateValue = num(menu?.discountRate);
 
-  const sellingPrice = calculateSellingPrice(basedPriceValue, plateformFeeValue);
-  const calculatedOfferPrice = calculateOfferPrice(
+  const calculatedSellingPrice = calculateSellingPrice(
     basedPriceValue,
     plateformFeeValue,
-    discountRateValue,
   );
+  const sellingPrice =
+    menu?.sellingPrice !== null &&
+    menu?.sellingPrice !== undefined &&
+    Number.isFinite(Number(menu.sellingPrice))
+    ? num(menu.sellingPrice)
+    : calculatedSellingPrice;
+  const calculatedOfferPrice =
+    menu?.offerPrice !== null &&
+    menu?.offerPrice !== undefined &&
+    Number.isFinite(Number(menu.offerPrice))
+    ? num(menu.offerPrice)
+    : calculateOfferPrice(
+        basedPriceValue,
+        plateformFeeValue,
+        discountRateValue,
+      );
 
   return {
     ...menu,
@@ -129,7 +144,7 @@ function StatsCard({icon: Icon, label, value, hint}) {
         </div>
 
         <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 text-blue-600">
-          <Icon size={20} />
+          {React.createElement(Icon, { size: 20 })}
         </div>
       </div>
     </div>
@@ -286,7 +301,7 @@ function PopularToggle({menuId, checked, queryKey, currentPosition = 999}) {
 
       const {data} = await updatePopularMenu({
         menuId,
-        status: nextChecked,
+        isPopular: nextChecked,
         position,
       });
 
@@ -340,7 +355,11 @@ function createRowsFromPopularMenus(popularMenus = []) {
     }));
 }
 
-function SetPopularMenuButton({queryKey, popularMenus = []}) {
+function SetPopularMenuButton({
+  queryKey,
+  popularMenus = [],
+  menuOptions = [],
+}) {
   const queryClient = useQueryClient();
 
   const [open, setOpen] = useState(false);
@@ -409,7 +428,7 @@ function SetPopularMenuButton({queryKey, popularMenus = []}) {
     );
 
     if (cleanedRows.length === 0) {
-      message.error("Please enter at least one menu ID.");
+      message.error("Please select at least one menu item.");
       return;
     }
 
@@ -448,7 +467,7 @@ function SetPopularMenuButton({queryKey, popularMenus = []}) {
       const turnOnRequests = cleanedRows.map(item =>
         updatePopularMenu({
           menuId: item.menuId,
-          status: true,
+          isPopular: true,
           position: item.position,
         }),
       );
@@ -456,7 +475,7 @@ function SetPopularMenuButton({queryKey, popularMenus = []}) {
       const turnOffRequests = removedPopularMenus.map(item =>
         updatePopularMenu({
           menuId: item._id,
-          status: false,
+          isPopular: false,
           position: 999,
         }),
       );
@@ -479,7 +498,7 @@ function SetPopularMenuButton({queryKey, popularMenus = []}) {
 
       if (failedCount > 0) {
         message.warning(
-          `${failedCount} menu failed to update. Please check menu ID.`,
+          `${failedCount} menu failed to update. Please retry.`,
         );
       }
 
@@ -521,9 +540,8 @@ function SetPopularMenuButton({queryKey, popularMenus = []}) {
         <div className="space-y-4">
           <div className="rounded-2xl border border-purple-100 bg-purple-50 p-4">
             <p className="text-sm font-semibold text-purple-800">
-              Previous popular menu IDs are loaded here. Edit the menu ID or
-              position, remove old rows, then save to replace the popular menu
-              order.
+              Select menu items from your own zone and give each one a unique
+              display position. Saving replaces the current popular order.
             </p>
           </div>
 
@@ -539,11 +557,15 @@ function SetPopularMenuButton({queryKey, popularMenus = []}) {
                 </div>
 
                 <div className="col-span-12 md:col-span-7">
-                  <Input
+                  <Select
+                    showSearch
                     value={row.menuId}
-                    onChange={e => updateRow(row.id, "menuId", e.target.value)}
-                    placeholder="Paste menu ID here"
+                    onChange={value => updateRow(row.id, "menuId", value)}
+                    options={menuOptions}
+                    optionFilterProp="label"
+                    placeholder="Select a zone menu item"
                     allowClear
+                    className="w-full"
                   />
 
                   {row.name ? (
@@ -770,12 +792,12 @@ function AllMenus() {
       width: 100,
       render: (img, record) => (
         <Image
-          src={`${image_uri}${img}`}
+          src={normalizeImageUrl(img)}
+          fallback={PLACEHOLDER_IMAGE}
           alt={record.titleLabel}
           width={56}
           height={56}
           className="rounded-full object-cover"
-          fallback="https://via.placeholder.com/56"
         />
       ),
     },
@@ -991,6 +1013,10 @@ function AllMenus() {
               <SetPopularMenuButton
                 queryKey={queryKey}
                 popularMenus={popularMenuRows}
+                menuOptions={menuData.map(item => ({
+                  value: item._id,
+                  label: `${item.titleLabel} — ${item.restaurantIdLabel}`,
+                }))}
               />
 
               <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">

@@ -29,7 +29,7 @@ import {
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
 import { useAuth } from "../context/authContext";
-import { image_uri } from "../utils/constants";
+import { normalizeImageUrl } from "../utils/image";
 import { Link } from "react-router";
 
 const RIDER_STATUS_OPTIONS = [
@@ -107,12 +107,7 @@ const getAddress = (rider) => rider?.address || rider?.location || "N/A";
 
 const getImage = (rider) => {
   const file = rider?.profileImage || rider?.image || "";
-
-  if (!file) return "";
-  if (String(file).startsWith("http")) return file;
-  if (String(file).startsWith("/uploads")) return `${image_uri}${file}`;
-
-  return `${image_uri}${file}`;
+  return normalizeImageUrl(file);
 };
 
 const getAccountStatus = (rider) =>
@@ -269,7 +264,7 @@ async function fetchPaginatedGet(urlBuilder, maxPages = 30) {
       if (total && rows.length >= total) break;
 
       page += 1;
-    } catch (error) {
+    } catch {
       break;
     }
   }
@@ -328,7 +323,10 @@ async function fetchCollectionRows(zoneId) {
 function InfoRow({ icon: Icon, value }) {
   return (
     <div className="flex items-start gap-2 text-sm text-slate-600">
-      <Icon size={15} className="mt-0.5 text-blue-500" />
+      {React.createElement(Icon, {
+        size: 15,
+        className: "mt-0.5 text-blue-500",
+      })}
       <span className="break-all">{value}</span>
     </div>
   );
@@ -466,6 +464,12 @@ function RiderCard({
             className="w-full"
           />
         </div>
+
+        <Link to={`/rider-payment/${rider._id}`}>
+          <Button type="primary" block icon={<Wallet size={16} />}>
+            Pay Rider from Earning
+          </Button>
+        </Link>
       </div>
     </div>
   );
