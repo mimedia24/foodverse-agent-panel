@@ -12,6 +12,8 @@ import {
   BarChart3,
   Trash2,
   WalletCards,
+  BadgeDollarSign,
+  Route as RouteIcon,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "../../context/authContext";
@@ -131,6 +133,22 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
              label="Reports"
              active={location.pathname.includes("/reports")}
            />
+          </Link>
+
+          <Link to="/platform-fee" onClick={closeAfterClick}>
+            <NavItem
+              icon={BadgeDollarSign}
+              label="Platform Fee"
+              active={location.pathname.includes("/platform-fee")}
+            />
+          </Link>
+
+          <Link to="/delivery-charges" onClick={closeAfterClick}>
+            <NavItem
+              icon={RouteIcon}
+              label="Delivery Charges"
+              active={location.pathname.includes("/delivery-charges")}
+            />
           </Link>
 
           <Link to="/bkash-ledger" onClick={closeAfterClick}>

@@ -139,6 +139,14 @@ const getRiderTip = (record) => {
   return toNumber(record?.tip ?? record?.riderTip ?? record?.riderTips);
 };
 
+const getOrderPlatformFee = (record) => {
+  return toNumber(
+    record?.orderPlatformFee ??
+      record?.orderPlatformFeeSnapshot?.effectiveAmount ??
+      0
+  );
+};
+
 const getVoucherAmount = (record) => {
   return toNumber(record?.voucherAmount);
 };
@@ -149,12 +157,18 @@ const getDisplayOrderTotal = (record) => {
   const addonsTotal = getAddonsTotal(items);
   const deliveryCharge = getUserDeliveryCharge(record);
   const riderTip = getRiderTip(record);
+  const orderPlatformFee = getOrderPlatformFee(record);
   const voucherAmount = getVoucherAmount(record);
 
   if (calculatedItemsTotal > 0) {
     return Math.max(
       0,
-      calculatedItemsTotal + addonsTotal + deliveryCharge + riderTip - voucherAmount
+      calculatedItemsTotal +
+        addonsTotal +
+        deliveryCharge +
+        riderTip +
+        orderPlatformFee -
+        voucherAmount
     );
   }
 
@@ -461,6 +475,7 @@ function Order() {
       render: (_, record) => {
         const deliveryCharge = getUserDeliveryCharge(record);
         const riderTip = getRiderTip(record);
+        const orderPlatformFee = getOrderPlatformFee(record);
         const voucherAmount = getVoucherAmount(record);
         const finalTotal = getDisplayOrderTotal(record);
 
@@ -474,6 +489,10 @@ function Order() {
 
             <div className="text-[10px] text-blue-500">
               Delivery {deliveryCharge.toFixed(0)}
+            </div>
+
+            <div className="text-[10px] font-semibold text-violet-600">
+              Platform Fee {orderPlatformFee.toFixed(0)}
             </div>
 
             {riderTip > 0 ? (

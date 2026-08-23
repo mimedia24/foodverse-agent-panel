@@ -215,10 +215,17 @@ const getCorrectFoodSell = (item) => {
 
 const normalizeSalesItem = (item) => {
   const foodSell = getCorrectFoodSell(item);
+  const platformFee = toNumber(
+    item?.platformFee ??
+      item?.orderPlatformFee ??
+      item?.orderPlatformFeeRevenue ??
+      0
+  );
 
   return {
     ...item,
     foodSell,
+    platformFee,
   };
 };
 
@@ -239,6 +246,9 @@ const normalizeDashboardData = (payload = {}) => {
     ? payload.topRestaurants.map((restaurant) => ({
         ...restaurant,
         foodSell: getCorrectFoodSell(restaurant),
+        platformFee: toNumber(
+          restaurant?.platformFee ?? restaurant?.orderPlatformFeeRevenue ?? 0
+        ),
       }))
     : [];
 
@@ -604,6 +614,13 @@ const getOrderRiderTips = (order) =>
       0
   );
 
+const getOrderPlatformFee = (order) =>
+  toNumber(
+    order?.orderPlatformFee ??
+      order?.orderPlatformFeeSnapshot?.effectiveAmount ??
+      0
+  );
+
 const getOrderRestaurantId = (order) =>
   order?.restaurantId?._id ||
   order?.restaurantId ||
@@ -634,12 +651,14 @@ const calculateOrderMetrics = (orders = []) =>
       const deliveryFee = getOrderDeliveryFee(order);
       const riderFee = getOrderRiderFee(order);
       const riderTips = getOrderRiderTips(order);
+      const platformFee = getOrderPlatformFee(order);
 
       acc.foodSell += foodSell;
       acc.restaurantSell += restaurantSell;
       acc.deliveryFee += deliveryFee;
       acc.deliveryProfit += deliveryFee - riderFee;
       acc.riderTips += riderTips;
+      acc.platformFee += platformFee;
       acc.totalOrder += 1;
 
       return acc;
@@ -650,6 +669,7 @@ const calculateOrderMetrics = (orders = []) =>
       deliveryFee: 0,
       deliveryProfit: 0,
       riderTips: 0,
+      platformFee: 0,
       totalOrder: 0,
     }
   );
@@ -664,6 +684,7 @@ const makeSalesCard = (title, orders, tone) => {
     deliveryFee: metrics.deliveryFee,
     deliveryProfit: metrics.deliveryProfit,
     riderTips: metrics.riderTips,
+    platformFee: metrics.platformFee,
     tone,
   };
 };
@@ -731,6 +752,7 @@ const buildDailyOverviewFromOrders = (orders = [], days = 7) => {
       deliveryProfit: metrics.deliveryProfit,
       chartDeliveryProfit: Math.max(metrics.deliveryProfit, 0),
       riderTips: metrics.riderTips,
+      platformFee: metrics.platformFee,
       totalOrder: metrics.totalOrder,
     });
   }
@@ -752,6 +774,7 @@ const buildTopRestaurantsFromOrders = (orders = []) => {
         badge: "Completed sales",
         foodSell: 0,
         restaurantSell: 0,
+        platformFee: 0,
         orders: 0,
       });
     }
@@ -760,6 +783,7 @@ const buildTopRestaurantsFromOrders = (orders = []) => {
 
     row.foodSell += getOrderFoodSell(order);
     row.restaurantSell += getOrderRestaurantSell(order);
+    row.platformFee += getOrderPlatformFee(order);
     row.orders += 1;
   });
 
@@ -778,6 +802,7 @@ const applyOrderBasedDashboardMetrics = (dashboardData = {}, orders = []) => {
   const revenueOverview = orderOverview.map((item) => ({
     label: item.label,
     foodSell: item.foodSell,
+    platformFee: item.platformFee,
   }));
 
   const topRestaurants = buildTopRestaurantsFromOrders(orders);
@@ -787,6 +812,7 @@ const applyOrderBasedDashboardMetrics = (dashboardData = {}, orders = []) => {
       item.foodSell > 0 ||
       item.restaurantSell > 0 ||
       item.deliveryFee > 0 ||
+      item.platformFee > 0 ||
       item.riderTips > 0
   );
 
@@ -941,6 +967,7 @@ function SalesSummaryCard({ item, index, isUpdating = false }) {
     { label: "Delivery Fee", value: item.deliveryFee, icon: Wallet },
     { label: "Delivery Profit", value: item.deliveryProfit, icon: HandCoins },
     { label: "Rider Tips", value: item.riderTips, icon: Coins },
+    { label: "Platform Fee", value: item.platformFee, icon: Banknote },
   ];
 
   return (
@@ -1040,6 +1067,13 @@ const CustomTooltip = ({ active, payload, label }) => {
             {formatMoney(data.riderTips)}
           </span>
         </div>
+
+        <div className="flex items-center justify-between gap-8">
+          <span className="text-[12px] text-slate-500">Platform Fee</span>
+          <span className="text-sm font-bold text-fuchsia-600">
+            {formatMoney(data.platformFee)}
+          </span>
+        </div>
       </div>
 
       <div className="mt-3 border-t border-slate-100 pt-2 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -1098,6 +1132,15 @@ function TopEntityCard({ item, type = "restaurant", rank = 1 }) {
                 </p>
                 <p className="mt-2 text-2xl font-black text-slate-950">
                   {formatMoney(item.restaurantSell)}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-violet-50 p-4 sm:col-span-2">
+                <p className="text-xs uppercase tracking-[0.2em] text-violet-400">
+                  Platform Fee
+                </p>
+                <p className="mt-2 text-2xl font-black text-violet-700">
+                  {formatMoney(item.platformFee)}
                 </p>
               </div>
             </div>
@@ -1193,8 +1236,16 @@ export default function Dashboard() {
       const normalized = normalizeDashboardData(res);
       setData(normalized);
 
-      const orders = await fetchAllDashboardOrders(user);
-      setData(applyOrderBasedDashboardMetrics(res, orders));
+      const hasNormalizedMetrics =
+        Array.isArray(normalized?.salesSummary) &&
+        normalized.salesSummary.length > 0;
+
+      if (!hasNormalizedMetrics) {
+        const orders = Array.isArray(res?.sourceOrders)
+          ? res.sourceOrders
+          : await fetchAllDashboardOrders(user);
+        setData(applyOrderBasedDashboardMetrics(res, orders));
+      }
     } catch (error) {
       console.error("Dashboard load error:", error);
       setErrorText(
@@ -1269,6 +1320,7 @@ export default function Dashboard() {
       deliveryFee: 0,
       deliveryProfit: 0,
       riderTips: 0,
+      platformFee: 0,
       tone: "blue",
     },
     {
@@ -1278,6 +1330,7 @@ export default function Dashboard() {
       deliveryFee: 0,
       deliveryProfit: 0,
       riderTips: 0,
+      platformFee: 0,
       tone: "emerald",
     },
     {
@@ -1287,6 +1340,7 @@ export default function Dashboard() {
       deliveryFee: 0,
       deliveryProfit: 0,
       riderTips: 0,
+      platformFee: 0,
       tone: "violet",
     },
   ];
@@ -1362,7 +1416,7 @@ export default function Dashboard() {
         <section className="grid gap-6 xl:grid-cols-2">
           <SectionCard
             title="Order Overview"
-            subtitle="Food sell, restaurant sell, delivery fee, delivery profit, rider tips and total order"
+            subtitle="Food sell, restaurant sell, delivery fee, delivery profit, rider tips, platform fee and total order"
             badge="Zone Orders"
             isUpdating={dashboardLoading}
           >
@@ -1414,6 +1468,12 @@ export default function Dashboard() {
                       name="Rider Tips"
                     />
                     <Bar
+                      dataKey="platformFee"
+                      fill="#d946ef"
+                      radius={[10, 10, 0, 0]}
+                      name="Platform Fee"
+                    />
+                    <Bar
                       dataKey="totalOrder"
                       fill="#0f172a"
                       radius={[10, 10, 0, 0]}
@@ -1429,7 +1489,7 @@ export default function Dashboard() {
 
           <SectionCard
             title="Revenue Overview"
-            subtitle="Only food sales"
+            subtitle="Food sales and order platform fee"
             badge="Zone Revenue"
             isUpdating={dashboardLoading}
           >
@@ -1456,6 +1516,16 @@ export default function Dashboard() {
                           stopOpacity={0.02}
                         />
                       </linearGradient>
+                      <linearGradient
+                        id="platformFeeGradient"
+                        x1="0"
+                        x2="0"
+                        y1="0"
+                        y2="1"
+                      >
+                        <stop offset="5%" stopColor="#d946ef" stopOpacity={0.45} />
+                        <stop offset="95%" stopColor="#d946ef" stopOpacity={0.02} />
+                      </linearGradient>
                     </defs>
                     <CartesianGrid
                       strokeDasharray="3 3"
@@ -1480,6 +1550,14 @@ export default function Dashboard() {
                       strokeWidth={4}
                       fill="url(#sellGradient)"
                       name="Food Sales"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="platformFee"
+                      stroke="#d946ef"
+                      strokeWidth={3}
+                      fill="url(#platformFeeGradient)"
+                      name="Platform Fee"
                     />
                   </AreaChart>
                 </ResponsiveContainer>

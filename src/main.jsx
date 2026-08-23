@@ -19,6 +19,8 @@ import Reports from "./screens/Reports.jsx";
 import AgentPartnerLanding from "./screens/AgentPartnerLanding.jsx";
 import OrderTrash from "./screens/OrderTrash.jsx";
 import BkashLedger from "./screens/BkashLedger.jsx";
+import PlatformFee from "./screens/PlatformFee.jsx";
+import DeliveryCharges from "./screens/DeliveryCharges.jsx";
 
 const queryClient = new QueryClient();
 
@@ -112,6 +114,22 @@ createRoot(document.getElementById("root")).render(
             element={
               <ProtectedRoute>
                 <OrderMap />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/platform-fee"
+            element={
+              <ProtectedRoute>
+                <PlatformFee />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/delivery-charges"
+            element={
+              <ProtectedRoute>
+                <DeliveryCharges />
               </ProtectedRoute>
             }
           />

@@ -7,6 +7,10 @@ function toNumber(value) {
   return Number.isFinite(num) ? num : 0;
 }
 
+function roundMoney(value) {
+  return Math.round(toNumber(value) * 100) / 100;
+}
+
 function formatDateKey(date) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: BD_TIMEZONE,
@@ -278,6 +282,12 @@ function getOrderMetrics(order) {
       0
   );
 
+  const platformFee = toNumber(
+    order?.orderPlatformFee ??
+      order?.orderPlatformFeeSnapshot?.effectiveAmount ??
+      0
+  );
+
   return {
     foodSell,
     restaurantSell,
@@ -285,6 +295,7 @@ function getOrderMetrics(order) {
     deliveryProfit: deliveryFee - riderCost,
     riderTips,
     riderCost,
+    platformFee,
   };
 }
 
@@ -339,6 +350,7 @@ function buildWeekDaysFromOrders(orders = []) {
       deliveryAmount: 0,
       riderTips: 0,
       deliveryProfit: 0,
+      platformFee: 0,
       totalOrders: 0,
       isUpcoming: d > bdNow,
     };
@@ -360,6 +372,7 @@ function buildWeekDaysFromOrders(orders = []) {
     lookup[key].deliveryAmount += metrics.deliveryFee;
     lookup[key].riderTips += metrics.riderTips;
     lookup[key].deliveryProfit += metrics.deliveryProfit;
+    lookup[key].platformFee += metrics.platformFee;
     lookup[key].totalOrders += 1;
   });
 
@@ -371,6 +384,7 @@ function buildWeekDaysFromOrders(orders = []) {
     deliveryAmount: Math.trunc(item.deliveryAmount),
     riderTips: Math.trunc(item.riderTips),
     deliveryProfit: Math.trunc(item.deliveryProfit),
+    platformFee: roundMoney(item.platformFee),
     totalOrders: item.totalOrders,
     isUpcoming: item.isUpcoming,
   }));
@@ -378,7 +392,7 @@ function buildWeekDaysFromOrders(orders = []) {
 
 async function fetchZoneOrdersForDashboard(zoneId) {
   let page = 1;
-  const limit = 100;
+  const limit = 500;
   const MAX_MONTH_PAGES = 12;
 
   let allMonthOrders = [];
@@ -529,6 +543,7 @@ function buildSummaryFromOrders(orders = []) {
     deliveryAmount: 0,
     riderTips: 0,
     deliveryProfit: 0,
+    platformFee: 0,
     count: 0,
   };
 
@@ -538,6 +553,7 @@ function buildSummaryFromOrders(orders = []) {
     deliveryAmount: 0,
     riderTips: 0,
     deliveryProfit: 0,
+    platformFee: 0,
   };
 
   const monthly = {
@@ -546,6 +562,7 @@ function buildSummaryFromOrders(orders = []) {
     deliveryAmount: 0,
     riderTips: 0,
     deliveryProfit: 0,
+    platformFee: 0,
   };
 
   orders.forEach((order) => {
@@ -564,6 +581,7 @@ function buildSummaryFromOrders(orders = []) {
       today.deliveryAmount += metrics.deliveryFee;
       today.riderTips += metrics.riderTips;
       today.deliveryProfit += metrics.deliveryProfit;
+      today.platformFee += metrics.platformFee;
       today.count += 1;
     }
 
@@ -573,6 +591,7 @@ function buildSummaryFromOrders(orders = []) {
       weekly.deliveryAmount += metrics.deliveryFee;
       weekly.riderTips += metrics.riderTips;
       weekly.deliveryProfit += metrics.deliveryProfit;
+      weekly.platformFee += metrics.platformFee;
     }
 
     if (monthKey === currentMonthKey) {
@@ -581,6 +600,7 @@ function buildSummaryFromOrders(orders = []) {
       monthly.deliveryAmount += metrics.deliveryFee;
       monthly.riderTips += metrics.riderTips;
       monthly.deliveryProfit += metrics.deliveryProfit;
+      monthly.platformFee += metrics.platformFee;
     }
   });
 
@@ -592,6 +612,7 @@ function buildSummaryFromOrders(orders = []) {
       deliveryAmount: Math.trunc(today.deliveryAmount),
       riderTips: Math.trunc(today.riderTips),
       deliveryProfit: Math.trunc(today.deliveryProfit),
+      platformFee: roundMoney(today.platformFee),
     },
     weekly: {
       totalSales: Math.trunc(weekly.totalSales),
@@ -599,6 +620,7 @@ function buildSummaryFromOrders(orders = []) {
       deliveryAmount: Math.trunc(weekly.deliveryAmount),
       riderTips: Math.trunc(weekly.riderTips),
       deliveryProfit: Math.trunc(weekly.deliveryProfit),
+      platformFee: roundMoney(weekly.platformFee),
     },
     monthly: {
       totalSales: Math.trunc(monthly.totalSales),
@@ -606,6 +628,7 @@ function buildSummaryFromOrders(orders = []) {
       deliveryAmount: Math.trunc(monthly.deliveryAmount),
       riderTips: Math.trunc(monthly.riderTips),
       deliveryProfit: Math.trunc(monthly.deliveryProfit),
+      platformFee: roundMoney(monthly.platformFee),
     },
     weekDaySales,
   };
@@ -630,6 +653,7 @@ function normalizeTopRestaurants(restaurants = [], monthOrders = []) {
       orders: 0,
       foodSell: 0,
       restaurantSell: 0,
+      platformFee: 0,
       badge: "Top Performer",
     });
   });
@@ -646,6 +670,7 @@ function normalizeTopRestaurants(restaurants = [], monthOrders = []) {
         orders: 0,
         foodSell: 0,
         restaurantSell: 0,
+        platformFee: 0,
         badge: "Top Performer",
       });
     }
@@ -656,6 +681,7 @@ function normalizeTopRestaurants(restaurants = [], monthOrders = []) {
     current.orders += 1;
     current.foodSell += metrics.foodSell;
     current.restaurantSell += metrics.restaurantSell;
+    current.platformFee += metrics.platformFee;
 
     if (!current.name || current.name === "Restaurant") {
       current.name = getRestaurantName(order);
@@ -680,6 +706,7 @@ function normalizeTopRestaurants(restaurants = [], monthOrders = []) {
       orders: Math.trunc(item.orders),
       foodSell: Math.trunc(item.foodSell),
       restaurantSell: Math.trunc(item.restaurantSell),
+      platformFee: roundMoney(item.platformFee),
     }));
 }
 
@@ -784,6 +811,7 @@ function normalizeOrderOverview(weekDaySales = []) {
     deliveryProfit: item.deliveryProfit,
     chartDeliveryProfit: item.deliveryProfit < 0 ? 0 : item.deliveryProfit,
     riderTips: item.riderTips,
+    platformFee: item.platformFee,
     totalOrder: item.totalOrders,
   }));
 }
@@ -792,6 +820,7 @@ function normalizeRevenueOverview(weekDaySales = []) {
   return weekDaySales.map((item) => ({
     label: item.day,
     foodSell: item.totalSales,
+    platformFee: item.platformFee,
   }));
 }
 
@@ -804,6 +833,7 @@ function normalizeSalesSummary(summary) {
       deliveryFee: summary.today.deliveryAmount,
       deliveryProfit: summary.today.deliveryProfit,
       riderTips: summary.today.riderTips,
+      platformFee: summary.today.platformFee,
       tone: "blue",
     },
     {
@@ -813,6 +843,7 @@ function normalizeSalesSummary(summary) {
       deliveryFee: summary.weekly.deliveryAmount,
       deliveryProfit: summary.weekly.deliveryProfit,
       riderTips: summary.weekly.riderTips,
+      platformFee: summary.weekly.platformFee,
       tone: "emerald",
     },
     {
@@ -822,6 +853,7 @@ function normalizeSalesSummary(summary) {
       deliveryFee: summary.monthly.deliveryAmount,
       deliveryProfit: summary.monthly.deliveryProfit,
       riderTips: summary.monthly.riderTips,
+      platformFee: summary.monthly.platformFee,
       tone: "violet",
     },
   ];
@@ -885,5 +917,6 @@ export async function fetchDashboardData(user) {
     topRestaurants: normalizeTopRestaurants(restaurants, monthOrders),
     topRiders: normalizeTopRiders(riders, monthOrders),
     salesSummary: normalizeSalesSummary(summary),
+    sourceOrders: monthOrders,
   };
 }
