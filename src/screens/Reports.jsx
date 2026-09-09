@@ -980,6 +980,10 @@ function Reports() {
 
     return {
       ...base,
+      bkashSuccessfulCount: 0,
+      bkashGrossReceived: 0,
+      bkashMerchantFee: 0,
+      bkashNetReceived: 0,
       restaurantCommissionProfit,
       deliveryProfit,
       grossProfit,
@@ -1096,6 +1100,10 @@ function Reports() {
       restaurantCommissionProfit: num(summary.restaurantCommissionProfit),
       grossProfit: num(summary.grossProfit),
       manualDiscount: num(summary.approvedManualDiscount),
+      bkashSuccessfulCount: num(summary.bkashSuccessfulCount),
+      bkashGrossReceived: num(summary.bkashGrossReceived),
+      bkashMerchantFee: num(summary.bkashMerchantFee),
+      bkashNetReceived: num(summary.bkashNetReceived),
       netProfit: num(summary.netProfit),
       orderCount: num(summary.completedOrders),
     };
@@ -1201,6 +1209,9 @@ function Reports() {
         `Delivery Fee: ${money(report.deliveryFee)}`,
         `Delivery Profit: ${signedMoney(report.deliveryProfit)}`,
         `Platform Fee: ${money(report.orderPlatformFeeRevenue)}`,
+        `bKash Gross Received: ${money(report.bkashGrossReceived)}`,
+        `bKash Merchant Fee: ${money(report.bkashMerchantFee)}`,
+        `bKash Net Received: ${money(report.bkashNetReceived)}`,
         `Voucher Expense: ${
           report.voucherExpense > 0 ? minusMoney(report.voucherExpense) : money(0)
         } (${report.voucherAppliedOrders || 0} orders)`,
@@ -1430,6 +1441,9 @@ function Reports() {
                 <div class="card green"><div class="card-label">Delivery Fee</div><div class="card-value positive">${money(report.deliveryFee)}</div></div>
                 <div class="card ${num(report.deliveryProfit) < 0 ? "red" : "green"}"><div class="card-label">Delivery Profit</div><div class="card-value ${pdfValueClass(report.deliveryProfit)}">${signedMoney(report.deliveryProfit)}</div></div>
                 <div class="card green"><div class="card-label">Platform Fee</div><div class="card-value positive">${money(report.orderPlatformFeeRevenue)}</div></div>
+                <div class="card blue"><div class="card-label">bKash Gross Received</div><div class="card-value positive">${money(report.bkashGrossReceived)}</div></div>
+                <div class="card red"><div class="card-label">bKash Merchant Fee</div><div class="card-value negative">${report.bkashMerchantFee > 0 ? minusMoney(report.bkashMerchantFee) : money(0)}</div></div>
+                <div class="card green"><div class="card-label">bKash Net Received</div><div class="card-value positive">${money(report.bkashNetReceived)}</div></div>
                 <div class="card red"><div class="card-label">Voucher Expense</div><div class="card-value negative">${report.voucherExpense > 0 ? minusMoney(report.voucherExpense) : money(0)}</div></div>
                 <div class="card green"><div class="card-label">Restaurant Commission</div><div class="card-value positive">${signedMoney(report.restaurantCommissionProfit)}</div></div>
                 <div class="card green"><div class="card-label">Food Sell Margin</div><div class="card-value positive">${signedMoney(report.foodMargin)}</div></div>
@@ -1493,6 +1507,24 @@ function Reports() {
       icon: BadgeDollarSign,
       label: "Platform Fee",
       value: money(report.orderPlatformFeeRevenue),
+    },
+    {
+      icon: BadgeDollarSign,
+      label: `bKash Gross Received (${report.bkashSuccessfulCount || 0})`,
+      value: money(report.bkashGrossReceived),
+    },
+    {
+      icon: BadgeDollarSign,
+      label: "bKash Merchant Fee",
+      value: report.bkashMerchantFee > 0
+        ? minusMoney(report.bkashMerchantFee)
+        : money(0),
+      valueClass: "text-amber-100",
+    },
+    {
+      icon: BadgeDollarSign,
+      label: "bKash Net Received",
+      value: money(report.bkashNetReceived),
     },
     {
       icon: Gift,

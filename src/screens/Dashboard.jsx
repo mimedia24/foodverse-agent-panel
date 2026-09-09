@@ -1,4 +1,5 @@
-import { createElement, useCallback, useEffect, useMemo, useState } from "react";
+import { createElement, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Layout from "../components/layout/Layout";
 import { fetchDashboardData } from "../api/dashboardApi";
 import api from "../api/config";
@@ -374,7 +375,7 @@ const runInBatches = async (items = [], batchSize = 4, worker) => {
   return results;
 };
 
-const fetchAllDashboardOrders = async (user, options = {}) => {
+const _fetchAllDashboardOrders = async (user, options = {}) => {
   const zoneId = getUserZoneId(user);
 
   if (!zoneId) return [];
@@ -792,7 +793,7 @@ const buildTopRestaurantsFromOrders = (orders = []) => {
     .slice(0, 2);
 };
 
-const applyOrderBasedDashboardMetrics = (dashboardData = {}, orders = []) => {
+const _applyOrderBasedDashboardMetrics = (dashboardData = {}, orders = []) => {
   if (!Array.isArray(orders) || !orders.length) {
     return normalizeDashboardData(dashboardData);
   }
@@ -1213,62 +1214,28 @@ function TopEntityCard({ item, type = "restaurant", rank = 1 }) {
 
 export default function Dashboard() {
   const { user, isLoading: authLoading } = useAuth();
-
-  const [loading, setLoading] = useState(true);
-  const [errorText, setErrorText] = useState("");
-  const [data, setData] = useState({
-    zoneName: "",
-    stats: [],
-    orderOverview: [],
-    revenueOverview: [],
-    topRestaurants: [],
-    topRiders: [],
-    salesSummary: [],
+  const {
+    data: dashboardPayload,
+    error: dashboardError,
+    isLoading,
+    isFetching,
+    refetch: loadDashboard,
+  } = useQuery({
+    queryKey: ["agent-dashboard-summary", user?.zoneId],
+    queryFn: () => fetchDashboardData(user),
+    enabled: !authLoading && Boolean(user?.zoneId),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
   });
-
-  const loadDashboard = useCallback(async () => {
-    if (!user?.zoneId) return;
-
-    try {
-      setLoading(true);
-      setErrorText("");
-      const res = await fetchDashboardData(user);
-      const normalized = normalizeDashboardData(res);
-      setData(normalized);
-
-      const hasNormalizedMetrics =
-        Array.isArray(normalized?.salesSummary) &&
-        normalized.salesSummary.length > 0;
-
-      if (!hasNormalizedMetrics) {
-        const orders = Array.isArray(res?.sourceOrders)
-          ? res.sourceOrders
-          : await fetchAllDashboardOrders(user);
-        setData(applyOrderBasedDashboardMetrics(res, orders));
-      }
-    } catch (error) {
-      console.error("Dashboard load error:", error);
-      setErrorText(
-        error?.response?.data?.message ||
-          error?.message ||
-          "Dashboard data load failed."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (authLoading) return;
-
-    if (!user?.zoneId) {
-      setLoading(false);
-      setErrorText("Zone ID not found for this agent.");
-      return;
-    }
-
-    loadDashboard();
-  }, [authLoading, user?.zoneId, loadDashboard]);
+  const data = useMemo(
+    () => normalizeDashboardData(dashboardPayload || {}),
+    [dashboardPayload]
+  );
+  const errorText = !authLoading && !user?.zoneId
+    ? "Zone ID not found for this agent."
+    : dashboardError?.response?.data?.message ||
+      dashboardError?.message ||
+      "";
 
   const heroLabels = useMemo(
     () => [
@@ -1279,7 +1246,7 @@ export default function Dashboard() {
     []
   );
 
-  const dashboardLoading = loading || authLoading;
+  const dashboardLoading = isLoading || isFetching || authLoading;
 
   const fallbackStats = [
     {

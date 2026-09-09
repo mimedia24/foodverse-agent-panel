@@ -200,18 +200,26 @@ function getOrderDate(order) {
   return null;
 }
 
-function getNormalDateString(order) {
-  const parsedDate = getOrderDate(order);
-  return parsedDate ? parsedDate.format("YYYY-MM-DD") : "";
+function formatBangladeshDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({type, value: part}) => [type, part]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function getBangladeshDateString(order) {
   const parsedDate = getOrderDate(order);
-  return parsedDate ? parsedDate.add(6, "hour").format("YYYY-MM-DD") : "";
+  return parsedDate ? formatBangladeshDate(parsedDate.toDate()) : "";
 }
 
 function getTodayBangladeshDateString() {
-  return dayjs().add(6, "hour").format("YYYY-MM-DD");
+  return formatBangladeshDate(new Date());
 }
 
 function pickLatLng(...sources) {
@@ -673,14 +681,8 @@ function OrderMap() {
     const map = new Map();
 
     allDateOrders.forEach((order) => {
-      const normalDate = getNormalDateString(order);
       const bdDate = getBangladeshDateString(order);
-
-      if (normalDate) {
-        map.set(normalDate, (map.get(normalDate) || 0) + 1);
-      }
-
-      if (bdDate && bdDate !== normalDate) {
+      if (bdDate) {
         map.set(bdDate, (map.get(bdDate) || 0) + 1);
       }
     });
@@ -790,6 +792,14 @@ function OrderMap() {
       <div className="relative h-[calc(100vh-96px)] min-h-[620px] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
         {mapsReady && !mapError ? (
           <div ref={mapContainerRef} className="h-full w-full" />
+        ) : mapError ? (
+          <div className="flex h-full items-center justify-center bg-slate-100 px-6">
+            <div className="max-w-md rounded-3xl border border-red-200 bg-white p-6 text-center shadow-sm">
+              <MapPin className="mx-auto h-10 w-10 text-red-500" />
+              <p className="mt-4 font-semibold text-slate-900">Map configuration required</p>
+              <p className="mt-2 text-sm text-red-600">{mapError}</p>
+            </div>
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center bg-slate-100">
             <div className="text-center">
@@ -799,9 +809,6 @@ function OrderMap() {
                 Loading map...
               </p>
 
-              {mapError ? (
-                <p className="mt-2 text-sm text-red-500">{mapError}</p>
-              ) : null}
             </div>
           </div>
         )}

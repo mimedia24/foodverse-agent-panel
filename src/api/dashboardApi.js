@@ -859,7 +859,7 @@ function normalizeSalesSummary(summary) {
   ];
 }
 
-export async function fetchDashboardData(user) {
+export async function fetchLegacyDashboardData(user) {
   const zoneId = user?.zoneId;
 
   if (!zoneId) {
@@ -918,5 +918,28 @@ export async function fetchDashboardData(user) {
     topRiders: normalizeTopRiders(riders, monthOrders),
     salesSummary: normalizeSalesSummary(summary),
     sourceOrders: monthOrders,
+  };
+}
+
+export async function fetchDashboardData(user) {
+  const zoneId = user?.zoneId;
+
+  if (!zoneId) {
+    throw new Error("Zone ID not found. Please login again.");
+  }
+
+  const response = await api.get("/zone/dashboard/summary");
+  if (!response?.data?.success || !response?.data?.result) {
+    throw new Error(response?.data?.message || "Dashboard summary could not be loaded.");
+  }
+
+  return {
+    ...response.data.result,
+    zoneName:
+      response.data.result.zoneName ||
+      user?.agentName ||
+      user?.businessName ||
+      user?.zoneName ||
+      `Zone ${zoneId}`,
   };
 }

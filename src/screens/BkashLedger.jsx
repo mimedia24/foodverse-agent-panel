@@ -80,6 +80,11 @@ export default function BkashLedger() {
       tone: "bg-cyan-50 text-cyan-700",
     },
   ];
+  const periodCards = [
+    ["Today", data?.periods?.today],
+    ["This Week", data?.periods?.weekly],
+    ["This Month", data?.periods?.monthly],
+  ];
 
   const columns = [
     {
@@ -207,6 +212,51 @@ export default function BkashLedger() {
               <p className="mt-2 text-xl font-black text-slate-950">{value}</p>
             </div>
           ))}
+        </section>
+
+        <section>
+          <div className="mb-3">
+            <h2 className="text-lg font-black text-slate-950">Received by period</h2>
+            <p className="text-sm text-slate-500">
+              Successful bKash collections in Bangladesh time.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {periodCards.map(([label, period]) => (
+              <article
+                key={label}
+                className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-fuchsia-700">
+                      {label}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {period?.startDate || "--"} to {period?.endDate || "--"}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                    {Number(period?.successfulCount || 0)} successful
+                  </span>
+                </div>
+                <div className="mt-5 grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-xs text-slate-400">Gross</p>
+                    <p className="mt-1 font-black text-slate-900">{money(period?.grossAmount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Fee</p>
+                    <p className="mt-1 font-black text-amber-700">{money(period?.merchantFee)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Net</p>
+                    <p className="mt-1 font-black text-cyan-700">{money(period?.netAmount)}</p>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
 
         <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">

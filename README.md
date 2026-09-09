@@ -1,5 +1,17 @@
 # React + Vite
 
+## Production environment
+
+The production deployment must define `VITE_GOOGLE_MAPS_API_KEY` in the Vercel
+project environment and then be rebuilt. In Google Cloud Console, enable the
+Maps JavaScript API and allow these HTTP referrers for that browser key:
+
+- `https://agent.foodversedelivery.com/*`
+- the production Vercel preview domain(s) used for release verification
+
+Do not commit the key to this repository. Without the build-time variable, the
+Order Map shows a configuration message instead of remaining in a loading loop.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

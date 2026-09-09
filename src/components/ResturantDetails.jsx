@@ -80,6 +80,8 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
   const currentBalance = num(
     res?.balance ?? res?.walletBalance ?? res?.wallet ?? 0,
   );
+  const totalSales = num(res?.totalSales);
+  const deliveredOrderCount = num(res?.deliveredOrderCount);
   const isActuallyOpen = Boolean(res?.isOpen) && !forceClosed;
 
   const statusOptions = [
@@ -321,6 +323,11 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
               icon={<Wallet size={16} />}
               label="Balance"
               value={money(currentBalance)}
+            />
+            <Info
+              icon={<TrendingUp size={16} />}
+              label="Completed Sales"
+              value={`${money(totalSales)} (${deliveredOrderCount} orders)`}
             />
             <Info
               icon={<Home size={16} />}
