@@ -21,6 +21,7 @@ import OrderTrash from "./screens/OrderTrash.jsx";
 import BkashLedger from "./screens/BkashLedger.jsx";
 import PlatformFee from "./screens/PlatformFee.jsx";
 import DeliveryCharges from "./screens/DeliveryCharges.jsx";
+import FlashDeals from "./screens/FlashDeals.jsx";
 
 const queryClient = new QueryClient();
 
@@ -133,6 +134,7 @@ createRoot(document.getElementById("root")).render(
               </ProtectedRoute>
             }
           />
+          <Route path="/flash-deals" element={<ProtectedRoute><FlashDeals /></ProtectedRoute>} />
           <Route
             path="/order-trash"
             element={

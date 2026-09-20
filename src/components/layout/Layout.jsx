@@ -14,6 +14,7 @@ import {
   WalletCards,
   BadgeDollarSign,
   Route as RouteIcon,
+  Flame,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "../../context/authContext";
@@ -142,6 +143,7 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
               active={location.pathname.includes("/platform-fee")}
             />
           </Link>
+          <Link to="/flash-deals" onClick={closeAfterClick}><NavItem icon={Flame} label="Flash Deals" active={location.pathname.includes("/flash-deals")} /></Link>
 
           <Link to="/delivery-charges" onClick={closeAfterClick}>
             <NavItem
