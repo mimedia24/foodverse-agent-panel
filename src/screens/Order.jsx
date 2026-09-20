@@ -152,6 +152,18 @@ const getVoucherAmount = (record) => {
 };
 
 const getDisplayOrderTotal = (record) => {
+  const snapshotTotal = toNumber(record?.pricingSnapshot?.finalPayable);
+  if (snapshotTotal > 0) {
+    return snapshotTotal;
+  }
+
+  const storedTotal = toNumber(
+    record?.totalAfterVoucherApplied ?? record?.totalAmount,
+  );
+  if (storedTotal > 0) {
+    return storedTotal;
+  }
+
   const items = Array.isArray(record?.items) ? record.items : [];
   const calculatedItemsTotal = getItemsSellingTotal(items);
   const addonsTotal = getAddonsTotal(items);
@@ -172,13 +184,7 @@ const getDisplayOrderTotal = (record) => {
     );
   }
 
-  const totalAfterVoucher = toNumber(record?.totalAfterVoucherApplied);
-
-  if (totalAfterVoucher > 0) {
-    return totalAfterVoucher;
-  }
-
-  return toNumber(record?.totalAmount);
+  return storedTotal;
 };
 
 const StatusBadge = ({ status }) => {
