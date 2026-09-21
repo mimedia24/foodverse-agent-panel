@@ -151,6 +151,39 @@ const getVoucherAmount = (record) => {
   return toNumber(record?.voucherAmount);
 };
 
+const getFlashDealAmount = (record) =>
+  toNumber(
+    record?.flashDiscountAmount ??
+      record?.pricingSnapshot?.flashDiscountAmount ??
+      record?.flashOffer?.discountAmount ??
+      0
+  );
+
+const getGrossItemsTotal = (record) => {
+  const snapshotGross = toNumber(record?.pricingSnapshot?.grossItemsTotal);
+  if (snapshotGross > 0) return snapshotGross;
+  const storedGross = toNumber(record?.totalSellingAmount ?? record?.grossItemsTotal);
+  const discounted = getItemsSellingTotal(record?.items || []);
+  const flash = getFlashDealAmount(record);
+  const storedFinal = toNumber(record?.totalAfterVoucherApplied ?? record?.totalAmount);
+  const expectedItems = storedFinal > 0
+    ? storedFinal -
+      getUserDeliveryCharge(record) -
+      getRiderTip(record) -
+      getOrderPlatformFee(record) +
+      getVoucherAmount(record) -
+      getAddonsTotal(record?.items || [])
+    : 0;
+  // Legacy orders may have either the discounted or original item price.
+  if (storedGross > 0 && !(flash > 0 && expectedItems > 0 && Math.abs(expectedItems - storedGross) < 1)) {
+    return storedGross;
+  }
+  if (flash > 0 && expectedItems > 0 && Math.abs(expectedItems - discounted) < 1) {
+    return discounted + flash;
+  }
+  return discounted;
+};
+
 const getDisplayOrderTotal = (record) => {
   const snapshotTotal = toNumber(record?.pricingSnapshot?.finalPayable);
   if (snapshotTotal > 0) {
@@ -483,6 +516,8 @@ function Order() {
         const riderTip = getRiderTip(record);
         const orderPlatformFee = getOrderPlatformFee(record);
         const voucherAmount = getVoucherAmount(record);
+        const flashDealAmount = getFlashDealAmount(record);
+        const grossItemsTotal = getGrossItemsTotal(record);
         const finalTotal = getDisplayOrderTotal(record);
 
         return (
@@ -492,6 +527,16 @@ function Order() {
             <div className="text-[14px] font-bold text-emerald-600">
               {formatMoney(finalTotal)}
             </div>
+
+            <div className="text-[10px] font-semibold text-slate-600">
+              Items {grossItemsTotal.toFixed(0)}
+            </div>
+
+            {flashDealAmount > 0 ? (
+              <div className="text-[10px] font-bold text-red-500">
+                Flash Deal -{flashDealAmount.toFixed(0)}
+              </div>
+            ) : null}
 
             <div className="text-[10px] text-blue-500">
               Delivery {deliveryCharge.toFixed(0)}

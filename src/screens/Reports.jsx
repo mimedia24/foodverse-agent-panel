@@ -299,7 +299,7 @@ const getOrderMetrics = (order) => {
       order?.flashOffer?.discountAmount ??
       0
   );
-  const hasFlashSnapshot = flashDealExpense > 0 && pricingSnapshot.grossItemsTotal !== undefined;
+  const hasFlashSnapshot = flashDealExpense > 0;
   const orderPlatformFee = num(
     order?.orderPlatformFee ??
       order?.orderPlatformFeeSnapshot?.effectiveAmount ??
@@ -325,7 +325,9 @@ const getOrderMetrics = (order) => {
       : 0;
 
   const foodSale = hasFlashSnapshot
-    ? num(pricingSnapshot.grossItemsTotal) + addonsTotal
+    ? num(pricingSnapshot.grossItemsTotal) > 0
+      ? num(pricingSnapshot.grossItemsTotal) + addonsTotal
+      : inferredFoodSale + flashDealExpense
     : inferredFoodSale > 0 ? inferredFoodSale : itemBasedFoodSale;
 
   return {
@@ -1107,7 +1109,7 @@ function Reports() {
 
     return {
       restaurantSale: num(summary.restaurantSale),
-      foodSale: num(summary.foodSale),
+      foodSale: Math.max(num(summary.foodSale), num(clientReport.foodSale)),
       foodMargin: num(summary.foodMargin),
       deliveryFee: num(summary.deliveryFee),
       deliveryProfit: num(summary.deliveryProfit),
@@ -1124,7 +1126,11 @@ function Reports() {
       bkashGrossReceived: num(summary.bkashGrossReceived),
       bkashMerchantFee: num(summary.bkashMerchantFee),
       bkashNetReceived: num(summary.bkashNetReceived),
-      netProfit: num(summary.netProfit),
+      netProfit:
+        num(summary.grossProfit) -
+        num(summary.flashDealExpense) -
+        num(summary.voucherExpense) -
+        num(summary.approvedManualDiscount),
       orderCount: num(summary.completedOrders),
     };
   }, [centralReportPayload, clientReport]);
@@ -1157,7 +1163,14 @@ function Reports() {
         flashDealExpense: num(row.flashDealExpense),
         orderPlatformFeeRevenue: num(row.orderPlatformFeeRevenue),
         manualDiscount,
-        netProfit: num(row.netProfit) - manualDiscount,
+        netProfit:
+          num(row.commissionProfit) +
+          num(row.foodMargin) +
+          num(row.deliveryProfit) +
+          num(row.orderPlatformFeeRevenue) -
+          num(row.flashDealExpense) -
+          num(row.voucherExpense) -
+          manualDiscount,
       };
     });
   }, [centralReportPayload, clientDailyRows, approvedDiscounts]);
@@ -1464,6 +1477,7 @@ function Reports() {
                 <div class="card green"><div class="card-label">Delivery Fee</div><div class="card-value positive">${money(report.deliveryFee)}</div></div>
                 <div class="card ${num(report.deliveryProfit) < 0 ? "red" : "green"}"><div class="card-label">Delivery Profit</div><div class="card-value ${pdfValueClass(report.deliveryProfit)}">${signedMoney(report.deliveryProfit)}</div></div>
                 <div class="card green"><div class="card-label">Platform Fee</div><div class="card-value positive">${money(report.orderPlatformFeeRevenue)}</div></div>
+                <div class="card red"><div class="card-label">Flash Deal</div><div class="card-value negative">${report.flashDealExpense > 0 ? minusMoney(report.flashDealExpense) : money(0)}</div></div>
                 <div class="card blue"><div class="card-label">bKash Gross Received</div><div class="card-value positive">${money(report.bkashGrossReceived)}</div></div>
                 <div class="card red"><div class="card-label">bKash Merchant Fee</div><div class="card-value negative">${report.bkashMerchantFee > 0 ? minusMoney(report.bkashMerchantFee) : money(0)}</div></div>
                 <div class="card green"><div class="card-label">bKash Net Received</div><div class="card-value positive">${money(report.bkashNetReceived)}</div></div>
@@ -1630,7 +1644,7 @@ function Reports() {
                 Profit Reports
               </h1>
               <p className="mt-2 max-w-3xl text-sm text-slate-500">
-                Only completed/successful orders are counted. Profit = restaurant commission + food sell margin + delivery profit + platform fee - voucher expense - approved manual discount.
+                Only completed/successful orders are counted. Net profit = gross profit - flash deal - voucher expense - approved manual discount.
               </p>
             </div>
 
@@ -1943,6 +1957,7 @@ function Reports() {
                   ["Food Sell Margin", signedMoney(report.foodMargin), report.foodMargin < 0 ? "text-red-500" : "text-emerald-600"],
                   ["Delivery Profit", signedMoney(report.deliveryProfit), report.deliveryProfit < 0 ? "text-red-500" : "text-emerald-600"],
                   ["Platform Fee Revenue", signedMoney(report.orderPlatformFeeRevenue), "text-fuchsia-600"],
+                  ["Flash Deal", report.flashDealExpense > 0 ? minusMoney(report.flashDealExpense) : money(0), "text-red-500"],
                   ["Voucher Expense", report.voucherExpense > 0 ? minusMoney(report.voucherExpense) : money(0), "text-red-500"],
                   ["Approved Manual Discount", report.manualDiscount > 0 ? minusMoney(report.manualDiscount) : money(0), "text-red-500"],
                   ["Net Profit", signedMoney(report.netProfit), report.netProfit < 0 ? "text-red-600" : "text-emerald-600"],

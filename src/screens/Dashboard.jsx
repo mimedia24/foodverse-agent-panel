@@ -185,6 +185,16 @@ const getSummaryDiscountAmount = (item) =>
   ]);
 
 const getCorrectFoodSell = (item) => {
+  const grossSnapshot = toNumber(item?.pricingSnapshot?.grossItemsTotal);
+  if (grossSnapshot > 0) return grossSnapshot;
+
+  const flashDiscount = toNumber(
+    item?.flashDealExpense ?? item?.flashDiscountAmount ?? item?.flashOffer?.discountAmount
+  );
+  const currentFoodSell = toNumber(item?.foodSell ?? item?.totalSales);
+  if (currentFoodSell > 0 && flashDiscount > 0) {
+    return currentFoodSell + flashDiscount;
+  }
   const explicitDiscounted = pickNumber(item, [
     "discountedFoodSell",
     "netFoodSell",
@@ -553,11 +563,19 @@ const getOrderRestaurantSell = (order) => {
 };
 
 const getOrderFoodSell = (order) => {
+  const grossSnapshot = toNumber(order?.pricingSnapshot?.grossItemsTotal);
+  if (grossSnapshot > 0) {
+    return grossSnapshot + getAddonTotalFromItems(getOrderItems(order));
+  }
+
+  const flashDiscount = toNumber(
+    order?.flashDiscountAmount ?? order?.flashOffer?.discountAmount
+  );
   const items = getOrderItems(order);
   const itemsTotal = calculateDiscountedFoodSellFromItems(items);
 
   if (itemsTotal > 0) {
-    return itemsTotal + getAddonTotalFromItems(items);
+    return itemsTotal + flashDiscount + getAddonTotalFromItems(items);
   }
 
   const beforeDiscount =
