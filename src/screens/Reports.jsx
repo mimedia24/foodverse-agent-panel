@@ -292,6 +292,14 @@ const getOrderMetrics = (order) => {
 
   const riderTips = num(order?.riderTips ?? order?.tipAmount ?? order?.tip);
   const voucherAmount = getOrderVoucherAmount(order);
+  const pricingSnapshot = order?.pricingSnapshot || {};
+  const flashDealExpense = num(
+    order?.flashDiscountAmount ??
+      pricingSnapshot.flashDiscountAmount ??
+      order?.flashOffer?.discountAmount ??
+      0
+  );
+  const hasFlashSnapshot = flashDealExpense > 0 && pricingSnapshot.grossItemsTotal !== undefined;
   const orderPlatformFee = num(
     order?.orderPlatformFee ??
       order?.orderPlatformFeeSnapshot?.effectiveAmount ??
@@ -299,7 +307,9 @@ const getOrderMetrics = (order) => {
   );
   const directFinalTotal = getDirectFinalTotal(order);
 
-  const restaurantSale = restaurantFoodSale + addonsTotal;
+  const restaurantSale = hasFlashSnapshot && pricingSnapshot.restaurantPayable !== undefined
+    ? num(pricingSnapshot.restaurantPayable)
+    : restaurantFoodSale + addonsTotal;
   const itemBasedFoodSale = customerFoodSale + addonsTotal;
 
   const inferredFoodSale =
@@ -314,7 +324,9 @@ const getOrderMetrics = (order) => {
         )
       : 0;
 
-  const foodSale = inferredFoodSale > 0 ? inferredFoodSale : itemBasedFoodSale;
+  const foodSale = hasFlashSnapshot
+    ? num(pricingSnapshot.grossItemsTotal) + addonsTotal
+    : inferredFoodSale > 0 ? inferredFoodSale : itemBasedFoodSale;
 
   return {
     restaurantSale,
@@ -324,6 +336,7 @@ const getOrderMetrics = (order) => {
     deliveryProfitAuto: deliveryFee - riderFee,
     riderTips,
     orderPlatformFee,
+    flashDealExpense,
   };
 };
 
@@ -879,6 +892,7 @@ function Reports() {
           foodMargin: 0,
           voucherAppliedOrders: 0,
           voucherExpense: 0,
+          flashDealExpense: 0,
           orderPlatformFeeRevenue: 0,
           voucherCodes: new Set(),
           orderCount: 0,
@@ -893,6 +907,7 @@ function Reports() {
       row.foodMargin += metrics.foodMargin;
       row.orderCount += 1;
       row.voucherExpense += voucher.amount;
+      row.flashDealExpense += metrics.flashDealExpense;
       row.orderPlatformFeeRevenue += metrics.orderPlatformFee;
 
       if (voucher.applied) {
@@ -930,6 +945,7 @@ function Reports() {
         acc.deliveryProfitAuto += metrics.deliveryProfitAuto;
         acc.riderTips += metrics.riderTips;
         acc.voucherExpense += voucher.amount;
+        acc.flashDealExpense += metrics.flashDealExpense;
         acc.orderPlatformFeeRevenue += metrics.orderPlatformFee;
         acc.orderCount += 1;
 
@@ -956,6 +972,7 @@ function Reports() {
         deliveryProfitAuto: 0,
         riderTips: 0,
         voucherExpense: 0,
+        flashDealExpense: 0,
         orderPlatformFeeRevenue: 0,
         voucherAppliedOrders: 0,
         voucherDetails: [],
@@ -976,7 +993,7 @@ function Reports() {
       deliveryProfit +
       base.orderPlatformFeeRevenue;
 
-    const netProfit = grossProfit - discountTotal - base.voucherExpense;
+    const netProfit = grossProfit - discountTotal - base.voucherExpense - base.flashDealExpense;
 
     return {
       ...base,
@@ -1013,6 +1030,7 @@ function Reports() {
           foodMargin: 0,
           deliveryProfitAuto: 0,
           voucherExpense: 0,
+          flashDealExpense: 0,
           orderPlatformFeeRevenue: 0,
           voucherAppliedOrders: 0,
         });
@@ -1028,6 +1046,7 @@ function Reports() {
       row.foodMargin += metrics.foodMargin;
       row.deliveryProfitAuto += metrics.deliveryProfitAuto;
       row.voucherExpense += voucher.amount;
+      row.flashDealExpense += metrics.flashDealExpense;
       row.orderPlatformFeeRevenue += metrics.orderPlatformFee;
       if (voucher.applied) row.voucherAppliedOrders += 1;
     });
@@ -1094,6 +1113,7 @@ function Reports() {
       deliveryProfit: num(summary.deliveryProfit),
       riderTips: num(summary.riderTips),
       voucherExpense: num(summary.voucherExpense),
+      flashDealExpense: num(summary.flashDealExpense),
       orderPlatformFeeRevenue: num(summary.orderPlatformFeeRevenue),
       voucherAppliedOrders: num(summary.voucherAppliedOrders),
       voucherDetails,
@@ -1116,6 +1136,7 @@ function Reports() {
       orderCount: num(row.completedOrders),
       rate: num(row.commissionRate),
       voucherAppliedOrders: num(row.voucherAppliedOrders),
+      flashDealExpense: num(row.flashDealExpense),
       orderPlatformFeeRevenue: num(row.orderPlatformFeeRevenue),
       voucherCodes: [],
     }));
@@ -1133,6 +1154,7 @@ function Reports() {
         orderCount: num(row.completedOrders),
         deliveryProfit: num(row.deliveryProfit),
         voucherAppliedOrders: num(row.voucherAppliedOrders),
+        flashDealExpense: num(row.flashDealExpense),
         orderPlatformFeeRevenue: num(row.orderPlatformFeeRevenue),
         manualDiscount,
         netProfit: num(row.netProfit) - manualDiscount,
@@ -1209,6 +1231,7 @@ function Reports() {
         `Delivery Fee: ${money(report.deliveryFee)}`,
         `Delivery Profit: ${signedMoney(report.deliveryProfit)}`,
         `Platform Fee: ${money(report.orderPlatformFeeRevenue)}`,
+        `Flash Deal: ${report.flashDealExpense > 0 ? minusMoney(report.flashDealExpense) : money(0)}`,
         `bKash Gross Received: ${money(report.bkashGrossReceived)}`,
         `bKash Merchant Fee: ${money(report.bkashMerchantFee)}`,
         `bKash Net Received: ${money(report.bkashNetReceived)}`,
@@ -1509,6 +1532,12 @@ function Reports() {
       value: money(report.orderPlatformFeeRevenue),
     },
     {
+      icon: Percent,
+      label: "Flash Deal",
+      value: report.flashDealExpense > 0 ? minusMoney(report.flashDealExpense) : money(0),
+      valueClass: "text-red-100",
+    },
+    {
       icon: BadgeDollarSign,
       label: `bKash Gross Received (${report.bkashSuccessfulCount || 0})`,
       value: money(report.bkashGrossReceived),
@@ -1558,6 +1587,13 @@ function Reports() {
       label: "Platform Fee Revenue",
       value: signedMoney(report.orderPlatformFeeRevenue),
       valueClass: valueColorClass(report.orderPlatformFeeRevenue),
+    },
+    {
+      icon: Percent,
+      label: "Flash Deal Expense",
+      value: report.flashDealExpense > 0 ? minusMoney(report.flashDealExpense) : money(0),
+      danger: true,
+      valueClass: "text-red-300",
     },
     {
       icon: Gift,
@@ -1786,6 +1822,7 @@ function Reports() {
                     <th className="px-3 py-3">Food Sale</th>
                     <th className="px-3 py-3">Delivery Profit</th>
                     <th className="px-3 py-3">Platform Fee</th>
+                    <th className="px-3 py-3">Flash Deal</th>
                     <th className="px-3 py-3">Voucher Expense</th>
                     <th className="px-3 py-3">Approved Discount</th>
                     <th className="px-3 py-3">Net Profit</th>
@@ -1806,6 +1843,9 @@ function Reports() {
                         </td>
                         <td className="px-3 py-3 font-semibold text-fuchsia-600">
                           {money(row.orderPlatformFeeRevenue)}
+                        </td>
+                        <td className="px-3 py-3 text-red-500 font-semibold">
+                          {row.flashDealExpense > 0 ? minusMoney(row.flashDealExpense) : money(0)}
                         </td>
                         <td className="px-3 py-3 text-red-500 font-semibold">
                           {row.voucherExpense > 0 ? minusMoney(row.voucherExpense) : money(0)}
@@ -1981,6 +2021,7 @@ function Reports() {
                   <th className="px-3 py-3">Food Sale</th>
                   <th className="px-3 py-3">Food Margin</th>
                   <th className="px-3 py-3">Platform Fee</th>
+                  <th className="px-3 py-3">Flash Deal</th>
                   <th className="px-3 py-3">Voucher Orders</th>
                   <th className="px-3 py-3">Voucher Expense</th>
                   <th className="px-3 py-3">Commission %</th>
@@ -1997,6 +2038,7 @@ function Reports() {
                       <td className="px-3 py-3 text-emerald-600 font-semibold">{money(row.foodSale)}</td>
                       <td className="px-3 py-3 font-semibold text-emerald-600">{signedMoney(row.foodMargin)}</td>
                       <td className="px-3 py-3 font-semibold text-fuchsia-600">{money(row.orderPlatformFeeRevenue)}</td>
+                      <td className="px-3 py-3 font-semibold text-red-500">{row.flashDealExpense > 0 ? minusMoney(row.flashDealExpense) : money(0)}</td>
                       <td className="px-3 py-3 text-slate-600">
                         {row.voucherAppliedOrders || 0}
                         {row.voucherCodes?.length ? (
