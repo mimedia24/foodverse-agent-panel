@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import "leaflet/dist/leaflet.css";
 
 import { BrowserRouter, Route, Routes } from "react-router";
 import ProtectedRoute from "./auth/ProtectedRoute.jsx";
