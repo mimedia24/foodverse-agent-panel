@@ -632,6 +632,28 @@ async function fetchAllRestaurants(zoneId) {
   return Array.from(new Map(items.map(item => [item._id, item])).values());
 }
 
+async function fetchAllRestaurantMenus(restaurantId) {
+  const limit = 100;
+  let page = 1;
+  let totalPages = 1;
+  const menus = [];
+
+  do {
+    const {data} = await api.get(
+      `/zone/restaurant/menu-list/${restaurantId}`,
+      {params: {page, limit}},
+    );
+    const rows = Array.isArray(data?.result) ? data.result : [];
+    menus.push(...rows);
+
+    totalPages = Math.max(1, Number(data?.totalPages) || 1);
+    if (!rows.length || rows.length < limit) break;
+    page += 1;
+  } while (page <= totalPages);
+
+  return Array.from(new Map(menus.map(item => [item._id, item])).values());
+}
+
 async function fetchAllMenusByZone(zoneId) {
   const restaurants = await fetchAllRestaurants(zoneId);
   const restaurantIds = restaurants.map(item => item?._id).filter(Boolean);
@@ -643,18 +665,14 @@ async function fetchAllMenusByZone(zoneId) {
     const chunk = restaurantIds.slice(i, i + chunkSize);
 
     const results = await Promise.allSettled(
-      chunk.map(restaurantId =>
-        api.get(`/zone/restaurant/menu-list/${restaurantId}`),
-      ),
+      chunk.map(restaurantId => fetchAllRestaurantMenus(restaurantId)),
     );
 
     results.forEach((result, index) => {
       if (result.status !== "fulfilled") return;
 
       const restaurantId = chunk[index];
-      const rows = Array.isArray(result?.value?.data?.result)
-        ? result.value.data.result
-        : [];
+      const rows = Array.isArray(result.value) ? result.value : [];
 
       const mapped = rows.map(menu => ({
         ...menu,

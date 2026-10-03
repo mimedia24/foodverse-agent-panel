@@ -311,8 +311,25 @@ function MenuScreen() {
   const queryKey = ["menu", restaurantId];
 
   const fetchRestaurantMenu = async () => {
-    const { data } = await api.get(`/zone/restaurant/menu-list/${restaurantId}`);
-    return Array.isArray(data?.result) ? data.result : [];
+    const limit = 100;
+    let page = 1;
+    let totalPages = 1;
+    const menus = [];
+
+    do {
+      const { data } = await api.get(
+        `/zone/restaurant/menu-list/${restaurantId}`,
+        { params: { page, limit } }
+      );
+      const rows = Array.isArray(data?.result) ? data.result : [];
+      menus.push(...rows);
+
+      totalPages = Math.max(1, Number(data?.totalPages) || 1);
+      if (!rows.length || rows.length < limit) break;
+      page += 1;
+    } while (page <= totalPages);
+
+    return Array.from(new Map(menus.map((menu) => [menu._id, menu])).values());
   };
 
   const { data: rawMenuData = [], isLoading, isFetching } = useQuery({
