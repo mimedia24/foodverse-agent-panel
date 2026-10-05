@@ -22,6 +22,7 @@ import {
   Home,
   Cake,
   Wallet,
+  Zap,
 } from "lucide-react";
 import { normalizeImageUrl, useImageFallback } from "../utils/image";
 import api from "../api/config";
@@ -157,9 +158,52 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
   const renderRestaurantOperatingTime = () => {
     const start = res.openingTime ? dayjs(res.openingTime, "HH:mm") : null;
     const end = res.closingTime ? dayjs(res.closingTime, "HH:mm") : null;
+    const hasValidSchedule =
+      /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(res.openingTime || "") &&
+      /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(res.closingTime || "") &&
+      res.openingTime !== res.closingTime;
 
     return (
       <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-white p-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-slate-700">Auto Open Daily</span>
+              <Tag color={res.autoOpenEnabled ? "purple" : "default"}>
+                {res.autoOpenEnabled ? "Auto Open" : "Manual Open"}
+              </Tag>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              {hasValidSchedule
+                ? `Daily at ${dayjs(res.openingTime, "HH:mm").format("hh:mm A")}`
+                : "Set opening and closing times to enable Auto Open"}
+            </p>
+            {forceClosed && res.autoOpenEnabled ? (
+              <p className="mt-1 text-xs font-medium text-amber-600">
+                Temporarily suppressed by Global Force Close
+              </p>
+            ) : null}
+          </div>
+          <Switch
+            checked={res.autoOpenEnabled === true}
+            loading={loading}
+            checkedChildren="Auto"
+            unCheckedChildren="Manual"
+            onChange={(checked) => {
+              if (checked && !hasValidSchedule) {
+                message.error(
+                  "Set valid opening and closing times before enabling Auto Open",
+                );
+                return;
+              }
+              handleUpdate(
+                `/zone/restaurant/update-operating-time/${res._id}`,
+                {autoOpenEnabled: checked},
+              );
+            }}
+          />
+        </div>
+
         <div className="flex items-center justify-between gap-3">
           <span className="font-semibold text-slate-700">Operating Control</span>
           <Switch
@@ -269,6 +313,10 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
             </Tag>
           )}
           {forceClosed && <Tag color="red">Force Closed</Tag>}
+          <Tag color={res.autoOpenEnabled ? "purple" : "default"}>
+            <Zap size={12} className="mr-1 inline" />
+            {res.autoOpenEnabled ? "Auto Open" : "Manual Open"}
+          </Tag>
         </div>
 
         <div className="absolute bottom-4 right-4">
