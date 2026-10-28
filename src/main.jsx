@@ -23,6 +23,7 @@ import BkashLedger from "./screens/BkashLedger.jsx";
 import PlatformFee from "./screens/PlatformFee.jsx";
 import DeliveryCharges from "./screens/DeliveryCharges.jsx";
 import FlashDeals from "./screens/FlashDeals.jsx";
+import PrivacyPolicy from "./screens/PrivacyPolicy.jsx";
 
 const queryClient = new QueryClient();
 
@@ -136,6 +137,7 @@ createRoot(document.getElementById("root")).render(
             }
           />
           <Route path="/flash-deals" element={<ProtectedRoute><FlashDeals /></ProtectedRoute>} />
+          <Route path="/privacy-policy" element={<ProtectedRoute><PrivacyPolicy /></ProtectedRoute>} />
           <Route
             path="/order-trash"
             element={

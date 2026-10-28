@@ -23,6 +23,7 @@ import {
   Cake,
   Wallet,
   Zap,
+  HandCoins,
 } from "lucide-react";
 import { normalizeImageUrl, useImageFallback } from "../utils/image";
 import api from "../api/config";
@@ -62,6 +63,8 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState(0);
+  const [vatRate, setVatRate] = useState(res?.foodVerseVatRate ?? res?.vatRate ?? 0);
+  const [vatRecipient, setVatRecipient] = useState(res?.vatRecipient || "FOODVERSE");
 
   const [showPaymentModal, setShowPaymentModal] = useState({
     visible: false,
@@ -70,6 +73,7 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
   const [transactionModal, setTransactionModal] = useState({
     visible: false,
   });
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
 
   const restaurantName = res?.name || res?.restaurantName || "Restaurant";
   const restaurantDescription = res?.description || "All item available";
@@ -84,6 +88,10 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
   const totalSales = num(res?.totalSales);
   const deliveredOrderCount = num(res?.deliveredOrderCount);
   const isActuallyOpen = Boolean(res?.isOpen) && !forceClosed;
+  const commissionRate = Math.min(100, Math.max(0, num(res?.commissionRate)));
+  const exampleGross = 100;
+  const exampleCommission = num((exampleGross * commissionRate) / 100);
+  const exampleRiderPays = num(exampleGross - exampleCommission);
 
   const statusOptions = [
     { key: "waiting for approved", label: "Waiting for Approval" },
@@ -165,6 +173,58 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
 
     return (
       <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+        <div className="rounded-xl border border-emerald-100 bg-white p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <HandCoins size={17} className="text-emerald-600" />
+                <span className="font-semibold text-slate-700">
+                  Rider Pays at Pickup
+                </span>
+                <Tag color={res.riderCashPaymentEnabled ? "green" : "default"}>
+                  {res.riderCashPaymentEnabled
+                    ? "Instant Payment"
+                    : "Wallet Settlement"}
+                </Tag>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Existing commission: {commissionRate}% • Applies only to new orders
+              </p>
+            </div>
+            <Switch
+              checked={res.riderCashPaymentEnabled === true}
+              loading={loading}
+              checkedChildren="Instant"
+              unCheckedChildren="Wallet"
+              onChange={checked =>
+                handleUpdate(
+                  `/zone/restaurant/${res._id}/rider-cash-payment`,
+                  {enabled: checked},
+                )
+              }
+            />
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+            <div className="rounded-lg bg-slate-50 p-2">
+              <p className="text-slate-400">Restaurant payable</p>
+              <p className="font-bold text-slate-700">{money(exampleGross)}</p>
+            </div>
+            <div className="rounded-lg bg-violet-50 p-2">
+              <p className="text-violet-500">Commission</p>
+              <p className="font-bold text-violet-700">{money(exampleCommission)}</p>
+            </div>
+            <div className="rounded-lg bg-emerald-50 p-2">
+              <p className="text-emerald-500">Rider pays</p>
+              <p className="font-bold text-emerald-700">{money(exampleRiderPays)}</p>
+            </div>
+            <div className="rounded-lg bg-rose-50 p-2">
+              <p className="text-rose-500">Balance debit</p>
+              <p className="font-bold text-rose-700">{money(exampleGross)}</p>
+            </div>
+          </div>
+        </div>
+
         <div className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-white p-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -253,6 +313,24 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
     );
   };
 
+  const renderVatSettings = () => (
+    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="font-semibold text-slate-700">VAT & Charges</span>
+        <Tag color="gold">New orders only</Tag>
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <Input type="number" min={0} max={100} step="0.01" value={vatRate} onChange={(e) => setVatRate(e.target.value)} addonAfter="% VAT" />
+        <select className="rounded-lg border border-slate-200 px-3" value={vatRecipient} onChange={(e) => setVatRecipient(e.target.value)}>
+          <option value="RESTAURANT">Restaurant receives VAT</option>
+          <option value="FOODVERSE">Food Verse receives VAT</option>
+        </select>
+        <Button type="primary" onClick={() => handleUpdate(`/zone/restaurants/${res._id}/vat-settings`, { vatRate: Number(vatRate || 0), vatRecipient })}>Save VAT settings</Button>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">VAT is calculated from the gross food subtotal. Packaging charge is configured per menu unit.</p>
+    </div>
+  );
+
   const transactionColumns = [
     {
       title: "Date",
@@ -281,7 +359,67 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
       align: "right",
       render: (val) => <Text className="font-bold">{money(val)}</Text>,
     },
+    {
+      title: "Details",
+      key: "details",
+      align: "right",
+      render: (_, record) => record.type === "Sale" ? (
+        <Button
+          size="small"
+          type="link"
+          onClick={(event) => {
+            event.stopPropagation();
+            setSelectedTransaction(record);
+          }}
+        >
+          View details
+        </Button>
+      ) : null,
+    },
   ];
+
+  const detailMoney = (value) => {
+    if (value === undefined || value === null || value === "") return "Not available for this order";
+    return money(value);
+  };
+
+  const renderTransactionDetail = (transaction) => {
+    if (!transaction) return null;
+    const rows = [
+      ["Food price before discount", transaction.customerFoodSubtotalBeforeDiscount, false],
+      ["Discount", transaction.customerFoodDiscount, false],
+      ["Food subtotal after discount", transaction.customerFoodSubtotalAfterDiscount, false],
+      ["Add-ons", transaction.addonTotal, false],
+      ["Restaurant food subtotal / commission base", transaction.restaurantFoodSubtotal ?? transaction.commissionBase, false],
+      ["Commission rate", transaction.commissionRate === undefined ? undefined : `${num(transaction.commissionRate)}%`, false],
+      ["Commission amount", transaction.commissionAmount, false],
+      ["Packaging charge", transaction.packagingCharge, false],
+      ["VAT received by restaurant", transaction.vatRecipient === "RESTAURANT" ? transaction.vatAmount : undefined, true],
+      ["Gross restaurant payable", transaction.grossRestaurantPayable, false],
+      ["Net restaurant credit", transaction.restaurantCredit ?? transaction.amount, false],
+    ];
+    return (
+      <div className="space-y-3">
+        <div className="rounded-xl bg-slate-50 p-3 text-sm">
+          <div><strong>Order ID:</strong> {transaction.orderId || "N/A"}</div>
+          <div><strong>Reference:</strong> {transaction.reference || "N/A"}</div>
+          <div><strong>Delivered:</strong> {transaction.date ? dayjs(transaction.date).format("DD MMM YYYY, hh:mm A") : "N/A"}</div>
+        </div>
+        <div className="divide-y rounded-xl border border-slate-100">
+          {rows.map(([label, value, hideWhenMissing]) => {
+            if (hideWhenMissing && (value === undefined || value === null || value === "")) return null;
+            if (typeof value === "number" && value === 0) return null;
+            return (
+              <div key={label} className="flex items-center justify-between gap-4 px-3 py-2 text-sm">
+                <span className="text-slate-500">{label}</span>
+                <span className="font-semibold text-slate-800">{typeof value === "string" ? value : detailMoney(value)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm transition duration-300 hover:shadow-xl">
@@ -316,6 +454,12 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
           <Tag color={res.autoOpenEnabled ? "purple" : "default"}>
             <Zap size={12} className="mr-1 inline" />
             {res.autoOpenEnabled ? "Auto Open" : "Manual Open"}
+          </Tag>
+          <Tag color={res.riderCashPaymentEnabled ? "green" : "default"}>
+            <HandCoins size={12} className="mr-1 inline" />
+            {res.riderCashPaymentEnabled
+              ? "Instant Payment"
+              : "Wallet Settlement"}
           </Tag>
         </div>
 
@@ -418,6 +562,7 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
         </div>
 
         {renderRestaurantOperatingTime()}
+        {renderVatSettings()}
 
         <div className="flex flex-wrap gap-2 border-t pt-4">
           <Tag color="purple">Status: {forceClosed ? "closed" : res.status}</Tag>
@@ -452,7 +597,21 @@ function RestaurantDetails({ res, forceClosed = false, onOpenWallet }) {
             columns={transactionColumns}
             rowKey="_id"
             pagination={{ pageSize: 6 }}
+            onRow={(record) => ({
+              onClick: () => record.type === "Sale" && setSelectedTransaction(record),
+              style: record.type === "Sale" ? { cursor: "pointer" } : undefined,
+            })}
           />
+        </GlobalModal>
+
+        <GlobalModal
+          open={Boolean(selectedTransaction)}
+          onCancel={() => setSelectedTransaction(null)}
+          title="Transaction Details"
+          footer={null}
+          width={560}
+        >
+          {renderTransactionDetail(selectedTransaction)}
         </GlobalModal>
 
         <div className="text-xs text-slate-400">

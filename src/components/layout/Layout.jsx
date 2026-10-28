@@ -15,6 +15,7 @@ import {
   BadgeDollarSign,
   Route as RouteIcon,
   Flame,
+  ShieldCheck,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "../../context/authContext";
@@ -160,6 +161,7 @@ export const Sidebar = ({ isOpen, toggleSidebar }) => {
               active={location.pathname.includes("/bkash-ledger")}
             />
           </Link>
+          <Link to="/privacy-policy" onClick={closeAfterClick}><NavItem icon={ShieldCheck} label="Privacy Policy" active={location.pathname.includes("/privacy-policy")} /></Link>
 
           <div className="pt-4 mt-4 border-t border-white/10">
             <div onClick={() => logout()}>

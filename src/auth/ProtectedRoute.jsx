@@ -1,9 +1,10 @@
 import React from "react";
-import { Navigate, Outlet } from "react-router";
+import { Navigate, Outlet, useLocation } from "react-router";
 import { useAuth } from "../context/authContext";
 
 function ProtectedRoute({ children }) {
-  const { isLoading, isLoggedIn } = useAuth();
+  const { isLoading, isLoggedIn, policyAccepted } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return (
@@ -15,6 +16,10 @@ function ProtectedRoute({ children }) {
 
   if (!isLoggedIn) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!policyAccepted && location.pathname !== "/privacy-policy") {
+    return <Navigate to="/privacy-policy" replace />;
   }
 
   return children ? children : <Outlet />;

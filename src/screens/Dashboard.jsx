@@ -246,11 +246,27 @@ const normalizeDashboardData = (payload = {}) => {
     : [];
 
   const orderOverview = Array.isArray(payload?.orderOverview)
-    ? payload.orderOverview.map(normalizeSalesItem)
+    ? payload.orderOverview.map((item, index) => ({
+        ...normalizeSalesItem(item),
+        label: item?.label || item?.day || item?.date || item?.dateKey || `Day ${index + 1}`,
+        foodSell: toNumber(item?.foodSell ?? item?.totalSales ?? item?.foodSale),
+        restaurantSell: toNumber(item?.restaurantSell ?? item?.restaurantSales ?? item?.restaurantSale),
+        deliveryFee: toNumber(item?.deliveryFee ?? item?.deliveryAmount),
+        deliveryProfit: toNumber(item?.deliveryProfit),
+        chartDeliveryProfit: toNumber(item?.chartDeliveryProfit ?? item?.deliveryProfit),
+        riderTips: toNumber(item?.riderTips ?? item?.riderTip),
+        platformFee: toNumber(item?.platformFee ?? item?.orderPlatformFee),
+        totalOrder: toNumber(item?.totalOrder ?? item?.totalOrders ?? item?.orders),
+      }))
     : [];
 
   const revenueOverview = Array.isArray(payload?.revenueOverview)
-    ? payload.revenueOverview.map(normalizeSalesItem)
+    ? payload.revenueOverview.map((item, index) => ({
+        ...normalizeSalesItem(item),
+        label: item?.label || item?.day || item?.date || item?.dateKey || `Day ${index + 1}`,
+        foodSell: toNumber(item?.foodSell ?? item?.totalSales ?? item?.foodSale),
+        platformFee: toNumber(item?.platformFee ?? item?.orderPlatformFee),
+      }))
     : [];
 
   const topRestaurants = Array.isArray(payload?.topRestaurants)
@@ -640,6 +656,18 @@ const getOrderPlatformFee = (order) =>
       0
   );
 
+const getOrderChargeBreakdown = (order) => {
+  const settlement = order?.restaurantSettlement || {};
+  const vatAmount = toNumber(settlement.vatAmount ?? order?.vatAmount ?? order?.pricingSnapshot?.vatAmount);
+  return {
+    packagingCharge: toNumber(settlement.packagingChargeTotal ?? settlement.packagingCharge ?? order?.packagingChargeTotal ?? order?.packagingCharge ?? order?.pricingSnapshot?.packagingChargeTotal ?? order?.pricingSnapshot?.packagingCharge),
+    vatCollected: vatAmount,
+    vatForRestaurant: toNumber(settlement.vatForRestaurant ?? (settlement.vatRecipient === "RESTAURANT" ? vatAmount : 0)),
+    vatRevenueFoodVerse: toNumber(settlement.vatForFoodVerse ?? (settlement.vatRecipient === "FOODVERSE" ? vatAmount : 0)),
+    commissionRevenue: toNumber(settlement.commissionAmount ?? order?.commissionAmount),
+  };
+};
+
 const getOrderRestaurantId = (order) =>
   order?.restaurantId?._id ||
   order?.restaurantId ||
@@ -671,6 +699,7 @@ const calculateOrderMetrics = (orders = []) =>
       const riderFee = getOrderRiderFee(order);
       const riderTips = getOrderRiderTips(order);
       const platformFee = getOrderPlatformFee(order);
+      const charges = getOrderChargeBreakdown(order);
 
       acc.foodSell += foodSell;
       acc.restaurantSell += restaurantSell;
@@ -678,6 +707,11 @@ const calculateOrderMetrics = (orders = []) =>
       acc.deliveryProfit += deliveryFee - riderFee;
       acc.riderTips += riderTips;
       acc.platformFee += platformFee;
+      acc.packagingCharge += charges.packagingCharge;
+      acc.vatCollected += charges.vatCollected;
+      acc.vatForRestaurant += charges.vatForRestaurant;
+      acc.vatRevenueFoodVerse += charges.vatRevenueFoodVerse;
+      acc.commissionRevenue += charges.commissionRevenue;
       acc.totalOrder += 1;
 
       return acc;
@@ -689,6 +723,11 @@ const calculateOrderMetrics = (orders = []) =>
       deliveryProfit: 0,
       riderTips: 0,
       platformFee: 0,
+      packagingCharge: 0,
+      vatCollected: 0,
+      vatForRestaurant: 0,
+      vatRevenueFoodVerse: 0,
+      commissionRevenue: 0,
       totalOrder: 0,
     }
   );
@@ -704,6 +743,11 @@ const makeSalesCard = (title, orders, tone) => {
     deliveryProfit: metrics.deliveryProfit,
     riderTips: metrics.riderTips,
     platformFee: metrics.platformFee,
+    packagingCharge: metrics.packagingCharge,
+    vatCollected: metrics.vatCollected,
+    vatForRestaurant: metrics.vatForRestaurant,
+    vatRevenueFoodVerse: metrics.vatRevenueFoodVerse,
+    commissionRevenue: metrics.commissionRevenue,
     tone,
   };
 };
@@ -772,6 +816,11 @@ const buildDailyOverviewFromOrders = (orders = [], days = 7) => {
       chartDeliveryProfit: Math.max(metrics.deliveryProfit, 0),
       riderTips: metrics.riderTips,
       platformFee: metrics.platformFee,
+      packagingCharge: metrics.packagingCharge,
+      vatCollected: metrics.vatCollected,
+      vatForRestaurant: metrics.vatForRestaurant,
+      vatRevenueFoodVerse: metrics.vatRevenueFoodVerse,
+      commissionRevenue: metrics.commissionRevenue,
       totalOrder: metrics.totalOrder,
     });
   }
@@ -987,6 +1036,9 @@ function SalesSummaryCard({ item, index, isUpdating = false }) {
     { label: "Delivery Profit", value: item.deliveryProfit, icon: HandCoins },
     { label: "Rider Tips", value: item.riderTips, icon: Coins },
     { label: "Platform Fee", value: item.platformFee, icon: Banknote },
+    { label: "Packaging (Restaurant)", value: item.packagingCharge, icon: Banknote },
+    { label: "Food Verse VAT", value: item.vatRevenueFoodVerse, icon: Banknote, always: true },
+    { label: "Commission Revenue", value: item.commissionRevenue, icon: Banknote },
   ];
 
   return (
@@ -1018,7 +1070,7 @@ function SalesSummaryCard({ item, index, isUpdating = false }) {
         </div>
 
         <div className="mt-6 grid gap-3">
-          {breakdown.map((row) => {
+          {breakdown.filter((row) => row.always || Math.abs(Number(row.value || 0)) > 0).map((row) => {
             const Icon = row.icon;
             return (
               <div
@@ -1057,6 +1109,18 @@ const CustomTooltip = ({ active, payload, label }) => {
           <span className="text-sm font-bold text-blue-600">
             {formatMoney(data.foodSell)}
           </span>
+        </div>
+
+        {Number(data.packagingCharge || 0) > 0 ? (
+          <div className="flex items-center justify-between gap-8">
+            <span className="text-[12px] text-slate-500">Packaging (Restaurant)</span>
+            <span className="text-sm font-bold text-emerald-600">{formatMoney(data.packagingCharge)}</span>
+          </div>
+        ) : null}
+
+        <div className="flex items-center justify-between gap-8">
+          <span className="text-[12px] text-slate-500">Food Verse VAT</span>
+          <span className="text-sm font-bold text-orange-600">{formatMoney(data.vatRevenueFoodVerse)}</span>
         </div>
 
         <div className="flex items-center justify-between gap-8">
@@ -1427,42 +1491,56 @@ export default function Dashboard() {
                       fill="#2563eb"
                       radius={[10, 10, 0, 0]}
                       name="Food Sell"
+                      isAnimationActive={false}
+                      minPointSize={2}
                     />
                     <Bar
                       dataKey="restaurantSell"
                       fill="#22c55e"
                       radius={[10, 10, 0, 0]}
                       name="Restaurant Sell"
+                      isAnimationActive={false}
+                      minPointSize={2}
                     />
                     <Bar
                       dataKey="deliveryFee"
                       fill="#f59e0b"
                       radius={[10, 10, 0, 0]}
                       name="Delivery Fee"
+                      isAnimationActive={false}
+                      minPointSize={2}
                     />
                     <Bar
                       dataKey="chartDeliveryProfit"
                       fill="#8b5cf6"
                       radius={[10, 10, 0, 0]}
                       name="Delivery Profit"
+                      isAnimationActive={false}
+                      minPointSize={2}
                     />
                     <Bar
                       dataKey="riderTips"
                       fill="#ef4444"
                       radius={[10, 10, 0, 0]}
                       name="Rider Tips"
+                      isAnimationActive={false}
+                      minPointSize={2}
                     />
                     <Bar
                       dataKey="platformFee"
                       fill="#d946ef"
                       radius={[10, 10, 0, 0]}
                       name="Platform Fee"
+                      isAnimationActive={false}
+                      minPointSize={2}
                     />
                     <Bar
                       dataKey="totalOrder"
                       fill="#0f172a"
                       radius={[10, 10, 0, 0]}
                       name="Total Order"
+                      isAnimationActive={false}
+                      minPointSize={2}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1474,7 +1552,7 @@ export default function Dashboard() {
 
           <SectionCard
             title="Revenue Overview"
-            subtitle="Food sales and order platform fee"
+            subtitle="Food sales, platform fee and Food Verse VAT"
             badge="Zone Revenue"
             isUpdating={dashboardLoading}
           >
@@ -1511,6 +1589,10 @@ export default function Dashboard() {
                         <stop offset="5%" stopColor="#d946ef" stopOpacity={0.45} />
                         <stop offset="95%" stopColor="#d946ef" stopOpacity={0.02} />
                       </linearGradient>
+                      <linearGradient id="vatGradient" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="5%" stopColor="#f97316" stopOpacity={0.45} />
+                        <stop offset="95%" stopColor="#f97316" stopOpacity={0.02} />
+                      </linearGradient>
                     </defs>
                     <CartesianGrid
                       strokeDasharray="3 3"
@@ -1535,6 +1617,7 @@ export default function Dashboard() {
                       strokeWidth={4}
                       fill="url(#sellGradient)"
                       name="Food Sales"
+                      isAnimationActive={false}
                     />
                     <Area
                       type="monotone"
@@ -1543,6 +1626,16 @@ export default function Dashboard() {
                       strokeWidth={3}
                       fill="url(#platformFeeGradient)"
                       name="Platform Fee"
+                      isAnimationActive={false}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="vatRevenueFoodVerse"
+                      stroke="#f97316"
+                      strokeWidth={3}
+                      fill="url(#vatGradient)"
+                      name="Food Verse VAT"
+                      isAnimationActive={false}
                     />
                   </AreaChart>
                 </ResponsiveContainer>

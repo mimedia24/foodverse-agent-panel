@@ -287,6 +287,12 @@ function getOrderMetrics(order) {
       order?.orderPlatformFeeSnapshot?.effectiveAmount ??
       0
   );
+  const settlement = order?.restaurantSettlement || {};
+  const packagingCharge = toNumber(settlement.packagingChargeTotal ?? settlement.packagingCharge ?? order?.packagingChargeTotal ?? order?.packagingCharge ?? order?.pricingSnapshot?.packagingChargeTotal ?? order?.pricingSnapshot?.packagingCharge);
+  const vatAmount = toNumber(settlement.vatAmount ?? order?.vatAmount ?? order?.pricingSnapshot?.vatAmount);
+  const vatForRestaurant = toNumber(settlement.vatForRestaurant ?? (settlement.vatRecipient === "RESTAURANT" ? vatAmount : 0));
+  const vatRevenueFoodVerse = toNumber(settlement.vatForFoodVerse ?? (settlement.vatRecipient === "FOODVERSE" ? vatAmount : 0));
+  const commissionRevenue = toNumber(settlement.commissionAmount ?? order?.commissionAmount);
 
   return {
     foodSell,
@@ -296,6 +302,11 @@ function getOrderMetrics(order) {
     riderTips,
     riderCost,
     platformFee,
+    packagingCharge,
+    vatCollected: vatAmount,
+    vatForRestaurant,
+    vatRevenueFoodVerse,
+    commissionRevenue,
   };
 }
 
@@ -812,6 +823,11 @@ function normalizeOrderOverview(weekDaySales = []) {
     chartDeliveryProfit: item.deliveryProfit < 0 ? 0 : item.deliveryProfit,
     riderTips: item.riderTips,
     platformFee: item.platformFee,
+    packagingCharge: item.packagingCharge,
+    vatCollected: item.vatCollected,
+    vatForRestaurant: item.vatForRestaurant,
+    vatRevenueFoodVerse: item.vatRevenueFoodVerse,
+    commissionRevenue: item.commissionRevenue,
     totalOrder: item.totalOrders,
   }));
 }
@@ -834,6 +850,11 @@ function normalizeSalesSummary(summary) {
       deliveryProfit: summary.today.deliveryProfit,
       riderTips: summary.today.riderTips,
       platformFee: summary.today.platformFee,
+      packagingCharge: summary.today.packagingCharge,
+      vatCollected: summary.today.vatCollected,
+      vatForRestaurant: summary.today.vatForRestaurant,
+      vatRevenueFoodVerse: summary.today.vatRevenueFoodVerse,
+      commissionRevenue: summary.today.commissionRevenue,
       tone: "blue",
     },
     {
@@ -844,6 +865,11 @@ function normalizeSalesSummary(summary) {
       deliveryProfit: summary.weekly.deliveryProfit,
       riderTips: summary.weekly.riderTips,
       platformFee: summary.weekly.platformFee,
+      packagingCharge: summary.weekly.packagingCharge,
+      vatCollected: summary.weekly.vatCollected,
+      vatForRestaurant: summary.weekly.vatForRestaurant,
+      vatRevenueFoodVerse: summary.weekly.vatRevenueFoodVerse,
+      commissionRevenue: summary.weekly.commissionRevenue,
       tone: "emerald",
     },
     {
@@ -854,6 +880,11 @@ function normalizeSalesSummary(summary) {
       deliveryProfit: summary.monthly.deliveryProfit,
       riderTips: summary.monthly.riderTips,
       platformFee: summary.monthly.platformFee,
+      packagingCharge: summary.monthly.packagingCharge,
+      vatCollected: summary.monthly.vatCollected,
+      vatForRestaurant: summary.monthly.vatForRestaurant,
+      vatRevenueFoodVerse: summary.monthly.vatRevenueFoodVerse,
+      commissionRevenue: summary.monthly.commissionRevenue,
       tone: "violet",
     },
   ];

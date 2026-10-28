@@ -39,6 +39,7 @@ function UpdateOrderStatus({ orderId, currentStatus }) {
   );
 
   const [status, setStatus] = useState(initialStatus);
+  const pickupLocked = ["picked up", "out for delivery", "on delivery", "delivered"].includes(initialStatus);
 
   const handleOpen = () => {
     setStatus(normalizeIncomingStatus(currentStatus));
@@ -117,8 +118,17 @@ function UpdateOrderStatus({ orderId, currentStatus }) {
           style={{ width: "100%" }}
           value={status}
           onChange={(value) => setStatus(value)}
-          options={STATUS_OPTIONS}
+        options={STATUS_OPTIONS.map((option) => ({
+          ...option,
+          disabled:
+            pickupLocked && ["pending", "accept by restaurant", "accept by rider", "ready for pickup"].includes(option.value),
+        }))}
         />
+        {pickupLocked ? (
+          <div style={{ marginTop: 10, color: "#92400e", fontSize: 12 }}>
+            Pickup is already confirmed. Pre-pickup statuses are locked.
+          </div>
+        ) : null}
       </GlobalModal>
 
       <CustomAlert

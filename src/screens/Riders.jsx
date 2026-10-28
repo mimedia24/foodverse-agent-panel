@@ -437,9 +437,10 @@ function RiderCard({
               Cash
             </div>
 
-            <p className="mt-2 text-base font-black text-slate-900">
+            <p className={`mt-2 text-base font-black ${getCash(rider) < 0 ? "text-rose-600" : "text-slate-900"}`}>
               {money(getCash(rider))}
             </p>
+            {getCash(rider) < 0 ? <p className="mt-1 text-[11px] font-bold text-rose-500">Food Verse owes Rider</p> : null}
           </div>
         </div>
 
@@ -467,7 +468,7 @@ function RiderCard({
 
         <Link to={`/rider-payment/${rider._id}`}>
           <Button type="primary" block icon={<Wallet size={16} />}>
-            Pay Rider from Earning
+            {getCash(rider) < 0 ? "Settle Receivable / Pay Earning" : "Pay Rider from Earning"}
           </Button>
         </Link>
       </div>

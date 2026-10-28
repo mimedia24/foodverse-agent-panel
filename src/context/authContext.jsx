@@ -13,6 +13,7 @@ const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggedIn, setIsLoggedin] = useState(false);
+  const [policyAccepted, setPolicyAccepted] = useState(true);
 
   /**
    *
@@ -33,6 +34,7 @@ const AuthProvider = ({ children }) => {
         localStorage.setItem("userId", data.result.user._id);
         setIsLoggedin(true);
         setUser(normalizeAgent(data.result.user));
+        try { const status = await api.get("/zone/privacy-policy/acceptance-status"); setPolicyAccepted(Boolean(status.data?.result?.accepted)); } catch { setPolicyAccepted(false); }
       }
     } catch (error) {
       setIsLoggedin(false);
@@ -75,6 +77,7 @@ const AuthProvider = ({ children }) => {
         if (data.success) {
           setUser(normalizeAgent(data.result));
           setIsLoggedin(true);
+          try { const status = await api.get("/zone/privacy-policy/acceptance-status"); setPolicyAccepted(Boolean(status.data?.result?.accepted)); } catch { setPolicyAccepted(false); }
         } else {
           localStorage.removeItem("accessToken");
           setIsLoggedin(false);
@@ -97,6 +100,7 @@ const AuthProvider = ({ children }) => {
     user,
     isLoading,
     isLoggedIn,
+    policyAccepted,
     login,
     logout,
   };

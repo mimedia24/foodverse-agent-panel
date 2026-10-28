@@ -2,8 +2,9 @@ import React, { useState } from "react";
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
 import { message } from "antd";
+import { compressImage } from "../utils/compressImage";
 
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -45,12 +46,12 @@ function RegisterRider() {
     }
 
     if (selectedFile.size > MAX_IMAGE_SIZE) {
-      message.error("Each image must be 5 MB or smaller.");
+      message.error("Each image must be 10 MB or smaller.");
       e.target.value = "";
       return;
     }
 
-    setFiles((current) => ({ ...current, [name]: selectedFile }));
+    compressImage(selectedFile).then((compressed) => setFiles((current) => ({ ...current, [name]: compressed }))).catch((error) => message.error(error.message));
   };
 
   const handleSubmit = async (e) => {

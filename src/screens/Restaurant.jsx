@@ -72,32 +72,9 @@ const createRowsFromPopularRestaurants = (popularRestaurants = []) => {
 };
 
 async function fetchAllRestaurants(zoneId) {
-  const limit = 100;
-  const maxPages = 20;
-  let page = 1;
-  let items = [];
-
-  while (page <= maxPages) {
-    const response = await api.post("/zone/restaurant-list", {
-      zoneId,
-      page,
-      limit,
-    });
-
-    const rows = Array.isArray(response?.data?.result)
-      ? response.data.result
-      : [];
-
-    items = [...items, ...rows];
-
-    if (!rows.length || rows.length < limit) {
-      break;
-    }
-
-    page += 1;
-  }
-
-  return Array.from(new Map(items.map(item => [item._id, item])).values());
+  const response = await api.get("/zone/restaurant-options", { params: { zoneId } });
+  const rows = Array.isArray(response?.data?.result) ? response.data.result : [];
+  return Array.from(new Map(rows.map(item => [item._id, item])).values());
 }
 
 function SetPopularRestaurantButton({
@@ -384,7 +361,7 @@ function Restaurant() {
   const restaurantsQueryKey = ["restaurants", zoneId, page];
   const allRestaurantsQueryKey = ["all-restaurants-for-popular", zoneId];
 
-  const {data, isLoading, refetch, isFetching} = useQuery({
+  const {data, isLoading, isError, refetch, isFetching} = useQuery({
     queryKey: restaurantsQueryKey,
     queryFn: async () => {
       const response = await api.post("/zone/restaurant-list", {
@@ -417,7 +394,7 @@ function Restaurant() {
       ...restaurant,
       balance: getRestaurantBaseBalance(restaurant),
       walletBalance: getRestaurantBaseBalance(restaurant),
-    }));
+    })).sort((a, b) => num(b.totalSales) - num(a.totalSales) || num(b.deliveredOrderCount) - num(a.deliveredOrderCount) || String(a.restaurantName || a.name || "").localeCompare(String(b.restaurantName || b.name || "")));
   }, [restaurantsRaw]);
 
   const allRestaurants = useMemo(() => {
@@ -469,9 +446,7 @@ function Restaurant() {
     return operator === "+" ? current + num(amount) : current - num(amount);
   }, [selectedRestaurant, amount, operator]);
 
-  const totalBalance = useMemo(() => {
-    return restaurants.reduce((sum, item) => sum + num(item.balance), 0);
-  }, [restaurants]);
+  const totalBalance = num(data?.summary?.totalBalance);
 
   const popularCount = useMemo(() => {
     return popularRestaurants.length;
@@ -503,14 +478,13 @@ function Restaurant() {
     }
 
     if (operator === "+") {
-      message.warning("Plus balance backend is not connected yet.");
-      return;
+      if (!note.trim()) { message.error("Please add a note for credit."); return; }
     }
 
     try {
       setWalletLoading(true);
 
-      const {data} = await api.put("/zone/restaurant-payment", {
+      const {data} = await api.put(operator === "+" ? "/zone/restaurant-balance/credit" : "/zone/restaurant-payment", {
         amount: num(amount),
         restaurantId: selectedRestaurantId,
         note,
@@ -715,6 +689,7 @@ function Restaurant() {
           </div>
 
           <div className="mt-6">
+            {isError ? <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-center text-sm text-red-700">Unable to load restaurants. <Button type="link" onClick={() => refetch()}>Retry</Button></div> : null}
             {isLoading ? (
               <div className="flex flex-col items-center py-20 opacity-70">
                 <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
@@ -722,7 +697,7 @@ function Restaurant() {
                   Loading restaurants...
                 </p>
               </div>
-            ) : restaurants.length === 0 ? (
+            ) : isError ? null : restaurants.length === 0 ? (
               <div className="rounded-[30px] border border-slate-200 bg-white p-16 text-center shadow-sm">
                 <Store size={42} className="mx-auto mb-4 text-slate-300" />
                 <h3 className="text-lg font-bold text-slate-700">
@@ -761,7 +736,7 @@ function Restaurant() {
 
             <Button
               shape="round"
-              disabled={restaurants.length < limit}
+              disabled={page >= Number(data?.totalPages || 1) || isFetching}
               onClick={() => setPage(p => p + 1)}>
               <ChevronRight size={16} />
             </Button>
@@ -786,7 +761,7 @@ function Restaurant() {
                 Adjust Restaurant Balance
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Minus is connected to backend. Plus needs backend endpoint.
+                Use a signed amount adjustment with an audit note.
               </p>
             </div>
 
@@ -909,13 +884,12 @@ function Restaurant() {
                   ? "!bg-gradient-to-r !from-emerald-500 !to-cyan-500"
                   : "!bg-gradient-to-r !from-rose-500 !to-orange-500"
               }`}>
-              {operator === "+" ? "Plus Not Connected" : "Submit Minus"}
+              {operator === "+" ? "Submit Credit" : "Submit Minus"}
             </Button>
           </div>
 
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
-            Live backend action available: minus via restaurant payment API. Plus
-            balance needs a separate backend endpoint.
+            Every balance adjustment is recorded with the Agent, note and before/after balance.
           </div>
         </div>
       </Modal>

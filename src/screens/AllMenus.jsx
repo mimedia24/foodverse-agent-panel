@@ -79,6 +79,7 @@ function normalizeMenu(menu) {
   const basedPriceValue = num(menu?.basedPrice);
   const plateformFeeValue = num(menu?.plateformFee);
   const discountRateValue = num(menu?.discountRate);
+  const packagingChargeValue = num(menu?.packagingCharge);
 
   const calculatedSellingPrice = calculateSellingPrice(
     basedPriceValue,
@@ -111,6 +112,7 @@ function normalizeMenu(menu) {
     basedPriceValue,
     plateformFeeValue,
     discountRateValue,
+    packagingChargeValue,
     sellingPrice,
     calculatedOfferPrice,
     isApprovedBool: !!menu?.isApproved,
@@ -202,9 +204,10 @@ function UpdateDiscountButton({menuId, currentDiscountRate = 0, queryKey}) {
   );
 }
 
-function UpdatePlatformFeeButton({menuId, currentFee = 0, queryKey}) {
+function UpdatePlatformFeeButton({menuId, currentFee = 0, currentPackaging = 0, queryKey}) {
   const [open, setOpen] = useState(false);
   const [platformFee, setPlatformFee] = useState(currentFee);
+  const [packagingCharge, setPackagingCharge] = useState(currentPackaging);
   const queryClient = useQueryClient();
 
   const handleSubmit = async () => {
@@ -213,6 +216,7 @@ function UpdatePlatformFeeButton({menuId, currentFee = 0, queryKey}) {
         menuId,
         platformFee: Number(platformFee || 0),
       });
+      await api.put("/zone/menu/update-packaging-charge", {menuId, packagingCharge: Number(packagingCharge || 0)});
 
       if (data?.success) {
         message.success(data?.message || "Platform fee updated successfully");
@@ -245,6 +249,15 @@ function UpdatePlatformFeeButton({menuId, currentFee = 0, queryKey}) {
           value={platformFee}
           onChange={value => setPlatformFee(value)}
           placeholder="Enter platform fee"
+          style={{width: "100%"}}
+        />
+        <InputNumber
+          className="mt-2"
+          min={0}
+          precision={2}
+          value={packagingCharge}
+          onChange={value => setPackagingCharge(value)}
+          placeholder="Packaging charge per unit"
           style={{width: "100%"}}
         />
       </Modal>
@@ -955,6 +968,7 @@ function AllMenus() {
         <UpdatePlatformFeeButton
           menuId={record._id}
           currentFee={record.plateformFeeValue}
+          currentPackaging={record.packagingChargeValue ?? record.packagingCharge ?? 0}
           queryKey={queryKey}
         />
       ),

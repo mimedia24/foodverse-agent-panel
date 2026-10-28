@@ -25,10 +25,10 @@ class OrderService {
     };
   }
 
-  static async getOrderList(page = 1, limit = 20, zoneId) {
+  static async getOrderList(page = 1, limit = 20, zoneId, paymentMethod = "") {
     try {
       const { data } = await api.post(
-        `/zone/order-list?page=${page}&limit=${limit}`,
+        `/zone/order-list?page=${page}&limit=${limit}${paymentMethod ? `&paymentMethod=${encodeURIComponent(paymentMethod)}` : ""}`,
         { zoneId }
       );
 

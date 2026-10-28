@@ -293,6 +293,21 @@ const getOrderMetrics = (order) => {
   const riderTips = num(order?.riderTips ?? order?.tipAmount ?? order?.tip);
   const voucherAmount = getOrderVoucherAmount(order);
   const pricingSnapshot = order?.pricingSnapshot || {};
+  const settlement = order?.restaurantSettlement || {};
+  const vatAmount = num(
+    settlement?.vatAmount ?? order?.vatAmount ?? pricingSnapshot?.vatAmount
+  );
+  const vatRecipient = String(
+    settlement?.vatRecipient ??
+      order?.vatRecipient ??
+      pricingSnapshot?.vatRecipient ??
+      "FOODVERSE"
+  ).toUpperCase();
+  const vatRevenueFoodVerse = num(
+    settlement?.vatForFoodVerse ??
+      order?.vatForFoodVerse ??
+      (vatRecipient === "FOODVERSE" ? vatAmount : 0)
+  );
   const flashDealExpense = num(
     order?.flashDiscountAmount ??
       pricingSnapshot.flashDiscountAmount ??
@@ -339,6 +354,7 @@ const getOrderMetrics = (order) => {
     riderTips,
     orderPlatformFee,
     flashDealExpense,
+    vatRevenueFoodVerse,
   };
 };
 
@@ -896,6 +912,7 @@ function Reports() {
           voucherExpense: 0,
           flashDealExpense: 0,
           orderPlatformFeeRevenue: 0,
+          vatRevenueFoodVerse: 0,
           voucherCodes: new Set(),
           orderCount: 0,
           rate: num(savedRestaurant?.commissionRate),
@@ -911,6 +928,7 @@ function Reports() {
       row.voucherExpense += voucher.amount;
       row.flashDealExpense += metrics.flashDealExpense;
       row.orderPlatformFeeRevenue += metrics.orderPlatformFee;
+      row.vatRevenueFoodVerse += metrics.vatRevenueFoodVerse;
 
       if (voucher.applied) {
         row.voucherAppliedOrders += 1;
@@ -949,6 +967,7 @@ function Reports() {
         acc.voucherExpense += voucher.amount;
         acc.flashDealExpense += metrics.flashDealExpense;
         acc.orderPlatformFeeRevenue += metrics.orderPlatformFee;
+        acc.vatRevenueFoodVerse += metrics.vatRevenueFoodVerse;
         acc.orderCount += 1;
 
         if (voucher.applied) {
@@ -976,6 +995,7 @@ function Reports() {
         voucherExpense: 0,
         flashDealExpense: 0,
         orderPlatformFeeRevenue: 0,
+        vatRevenueFoodVerse: 0,
         voucherAppliedOrders: 0,
         voucherDetails: [],
         orderCount: 0,
@@ -993,7 +1013,8 @@ function Reports() {
       restaurantCommissionProfit +
       base.foodMargin +
       deliveryProfit +
-      base.orderPlatformFeeRevenue;
+      base.orderPlatformFeeRevenue +
+      base.vatRevenueFoodVerse;
 
     const netProfit = grossProfit - discountTotal - base.voucherExpense - base.flashDealExpense;
 
@@ -1034,6 +1055,7 @@ function Reports() {
           voucherExpense: 0,
           flashDealExpense: 0,
           orderPlatformFeeRevenue: 0,
+          vatRevenueFoodVerse: 0,
           voucherAppliedOrders: 0,
         });
       }
@@ -1050,6 +1072,7 @@ function Reports() {
       row.voucherExpense += voucher.amount;
       row.flashDealExpense += metrics.flashDealExpense;
       row.orderPlatformFeeRevenue += metrics.orderPlatformFee;
+      row.vatRevenueFoodVerse += metrics.vatRevenueFoodVerse;
       if (voucher.applied) row.voucherAppliedOrders += 1;
     });
 
@@ -1085,7 +1108,8 @@ function Reports() {
             deliveryProfit -
             manualDiscount -
             row.voucherExpense +
-            row.orderPlatformFeeRevenue,
+            row.orderPlatformFeeRevenue +
+            row.vatRevenueFoodVerse,
         };
       })
       .sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -1117,6 +1141,7 @@ function Reports() {
       voucherExpense: num(summary.voucherExpense),
       flashDealExpense: num(summary.flashDealExpense),
       orderPlatformFeeRevenue: num(summary.orderPlatformFeeRevenue),
+      vatRevenueFoodVerse: num(summary.vatRevenueFoodVerse),
       voucherAppliedOrders: num(summary.voucherAppliedOrders),
       voucherDetails,
       restaurantCommissionProfit: num(summary.restaurantCommissionProfit),
@@ -1127,10 +1152,12 @@ function Reports() {
       bkashMerchantFee: num(summary.bkashMerchantFee),
       bkashNetReceived: num(summary.bkashNetReceived),
       netProfit:
-        num(summary.grossProfit) -
-        num(summary.flashDealExpense) -
-        num(summary.voucherExpense) -
-        num(summary.approvedManualDiscount),
+        summary.netProfit !== undefined
+          ? num(summary.netProfit)
+          : num(summary.grossProfit) -
+            num(summary.flashDealExpense) -
+            num(summary.voucherExpense) -
+            num(summary.approvedManualDiscount),
       orderCount: num(summary.completedOrders),
     };
   }, [centralReportPayload, clientReport]);
@@ -1162,6 +1189,7 @@ function Reports() {
         voucherAppliedOrders: num(row.voucherAppliedOrders),
         flashDealExpense: num(row.flashDealExpense),
         orderPlatformFeeRevenue: num(row.orderPlatformFeeRevenue),
+        vatRevenueFoodVerse: num(row.vatRevenueFoodVerse),
         manualDiscount,
         netProfit:
           num(row.commissionProfit) +
@@ -1170,7 +1198,8 @@ function Reports() {
           num(row.orderPlatformFeeRevenue) -
           num(row.flashDealExpense) -
           num(row.voucherExpense) -
-          manualDiscount,
+          manualDiscount +
+          num(row.vatRevenueFoodVerse),
       };
     });
   }, [centralReportPayload, clientDailyRows, approvedDiscounts]);
@@ -1244,6 +1273,7 @@ function Reports() {
         `Delivery Fee: ${money(report.deliveryFee)}`,
         `Delivery Profit: ${signedMoney(report.deliveryProfit)}`,
         `Platform Fee: ${money(report.orderPlatformFeeRevenue)}`,
+        `Food Verse VAT Revenue: ${money(report.vatRevenueFoodVerse)}`,
         `Flash Deal: ${report.flashDealExpense > 0 ? minusMoney(report.flashDealExpense) : money(0)}`,
         `bKash Gross Received: ${money(report.bkashGrossReceived)}`,
         `bKash Merchant Fee: ${money(report.bkashMerchantFee)}`,
@@ -1477,6 +1507,7 @@ function Reports() {
                 <div class="card green"><div class="card-label">Delivery Fee</div><div class="card-value positive">${money(report.deliveryFee)}</div></div>
                 <div class="card ${num(report.deliveryProfit) < 0 ? "red" : "green"}"><div class="card-label">Delivery Profit</div><div class="card-value ${pdfValueClass(report.deliveryProfit)}">${signedMoney(report.deliveryProfit)}</div></div>
                 <div class="card green"><div class="card-label">Platform Fee</div><div class="card-value positive">${money(report.orderPlatformFeeRevenue)}</div></div>
+                <div class="card green"><div class="card-label">Food Verse VAT Revenue</div><div class="card-value positive">${money(report.vatRevenueFoodVerse)}</div></div>
                 <div class="card red"><div class="card-label">Flash Deal</div><div class="card-value negative">${report.flashDealExpense > 0 ? minusMoney(report.flashDealExpense) : money(0)}</div></div>
                 <div class="card blue"><div class="card-label">bKash Gross Received</div><div class="card-value positive">${money(report.bkashGrossReceived)}</div></div>
                 <div class="card red"><div class="card-label">bKash Merchant Fee</div><div class="card-value negative">${report.bkashMerchantFee > 0 ? minusMoney(report.bkashMerchantFee) : money(0)}</div></div>
@@ -1546,6 +1577,11 @@ function Reports() {
       value: money(report.orderPlatformFeeRevenue),
     },
     {
+      icon: BadgeDollarSign,
+      label: "Food Verse VAT",
+      value: money(report.vatRevenueFoodVerse),
+    },
+    {
       icon: Percent,
       label: "Flash Deal",
       value: report.flashDealExpense > 0 ? minusMoney(report.flashDealExpense) : money(0),
@@ -1601,6 +1637,12 @@ function Reports() {
       label: "Platform Fee Revenue",
       value: signedMoney(report.orderPlatformFeeRevenue),
       valueClass: valueColorClass(report.orderPlatformFeeRevenue),
+    },
+    {
+      icon: BadgeDollarSign,
+      label: "Food Verse VAT Revenue",
+      value: signedMoney(report.vatRevenueFoodVerse),
+      valueClass: valueColorClass(report.vatRevenueFoodVerse),
     },
     {
       icon: Percent,
@@ -1796,7 +1838,7 @@ function Reports() {
                   {signedMoney(report.netProfit)}
                 </h3>
                 <p className="mt-2 text-xs opacity-80">
-                  Completed orders + platform fee - voucher expense - approved discount
+                  Commission + margin + delivery profit + platform fee + Food Verse VAT - expenses
                 </p>
               </div>
               <div className="rounded-2xl bg-white/15 p-3">
@@ -1836,6 +1878,7 @@ function Reports() {
                     <th className="px-3 py-3">Food Sale</th>
                     <th className="px-3 py-3">Delivery Profit</th>
                     <th className="px-3 py-3">Platform Fee</th>
+                    <th className="px-3 py-3">Food Verse VAT</th>
                     <th className="px-3 py-3">Flash Deal</th>
                     <th className="px-3 py-3">Voucher Expense</th>
                     <th className="px-3 py-3">Approved Discount</th>
@@ -1858,6 +1901,9 @@ function Reports() {
                         <td className="px-3 py-3 font-semibold text-fuchsia-600">
                           {money(row.orderPlatformFeeRevenue)}
                         </td>
+                        <td className="px-3 py-3 font-semibold text-orange-600">
+                          {money(row.vatRevenueFoodVerse)}
+                        </td>
                         <td className="px-3 py-3 text-red-500 font-semibold">
                           {row.flashDealExpense > 0 ? minusMoney(row.flashDealExpense) : money(0)}
                         </td>
@@ -1877,7 +1923,7 @@ function Reports() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
+                      <td colSpan={11} className="px-3 py-8 text-center text-slate-500">
                         No completed/successful orders found in this range.
                       </td>
                     </tr>
@@ -1957,6 +2003,7 @@ function Reports() {
                   ["Food Sell Margin", signedMoney(report.foodMargin), report.foodMargin < 0 ? "text-red-500" : "text-emerald-600"],
                   ["Delivery Profit", signedMoney(report.deliveryProfit), report.deliveryProfit < 0 ? "text-red-500" : "text-emerald-600"],
                   ["Platform Fee Revenue", signedMoney(report.orderPlatformFeeRevenue), "text-fuchsia-600"],
+                  ["Food Verse VAT Revenue", signedMoney(report.vatRevenueFoodVerse), "text-orange-600"],
                   ["Flash Deal", report.flashDealExpense > 0 ? minusMoney(report.flashDealExpense) : money(0), "text-red-500"],
                   ["Voucher Expense", report.voucherExpense > 0 ? minusMoney(report.voucherExpense) : money(0), "text-red-500"],
                   ["Approved Manual Discount", report.manualDiscount > 0 ? minusMoney(report.manualDiscount) : money(0), "text-red-500"],
@@ -2036,6 +2083,7 @@ function Reports() {
                   <th className="px-3 py-3">Food Sale</th>
                   <th className="px-3 py-3">Food Margin</th>
                   <th className="px-3 py-3">Platform Fee</th>
+                  <th className="px-3 py-3">Food Verse VAT</th>
                   <th className="px-3 py-3">Flash Deal</th>
                   <th className="px-3 py-3">Voucher Orders</th>
                   <th className="px-3 py-3">Voucher Expense</th>
@@ -2053,6 +2101,7 @@ function Reports() {
                       <td className="px-3 py-3 text-emerald-600 font-semibold">{money(row.foodSale)}</td>
                       <td className="px-3 py-3 font-semibold text-emerald-600">{signedMoney(row.foodMargin)}</td>
                       <td className="px-3 py-3 font-semibold text-fuchsia-600">{money(row.orderPlatformFeeRevenue)}</td>
+                      <td className="px-3 py-3 font-semibold text-orange-600">{money(row.vatRevenueFoodVerse)}</td>
                       <td className="px-3 py-3 font-semibold text-red-500">{row.flashDealExpense > 0 ? minusMoney(row.flashDealExpense) : money(0)}</td>
                       <td className="px-3 py-3 text-slate-600">
                         {row.voucherAppliedOrders || 0}
@@ -2075,7 +2124,7 @@ function Reports() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={10} className="px-3 py-8 text-center text-slate-500">
+                    <td colSpan={12} className="px-3 py-8 text-center text-slate-500">
                       No completed/successful restaurant sales found in this range.
                     </td>
                   </tr>

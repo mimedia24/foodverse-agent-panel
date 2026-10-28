@@ -10,6 +10,7 @@ import {
   Button,
   Tooltip,
   message,
+  Select,
 } from "antd";
 import {
   SearchOutlined,
@@ -17,6 +18,8 @@ import {
   EnvironmentOutlined,
   CopyOutlined,
   CalendarOutlined,
+  DownOutlined,
+  UpOutlined,
 } from "@ant-design/icons";
 import { useSearchParams } from "react-router";
 import {
@@ -33,6 +36,7 @@ import DeleteOrder from "../components/orders/DeleteOrder";
 import UpdateOrderStatus from "../components/orders/UpdateOrderStatus";
 import OrderService from "../api/order.service";
 import OrderTimeline from "../components/orders/OrderTimeline";
+import EditOrderItems from "../components/orders/EditOrderItems";
 
 const { Title, Text } = Typography;
 
@@ -49,6 +53,14 @@ const toNumber = (value) => {
 
 const formatMoney = (value) => {
   return `TK ${Math.round(toNumber(value)).toLocaleString("en-BD")}`;
+};
+
+const paymentMethodLabel = (record) => {
+  const raw = String(record?.paymentMethodLabel || record?.paymentMethod || record?.peymentMethod || record?.payementMethod || "").toLowerCase().replace(/[._-]+/g, " ");
+  if (raw.includes("bkash") || raw.includes("b kash")) return "bKash";
+  if (raw === "cod" || raw === "cash" || raw.includes("cash on delivery")) return "Cash on Delivery";
+  if (raw.includes("wallet") || raw.includes("online") || raw.includes("card") || raw.includes("nagad")) return "Wallet / Online";
+  return "Unknown";
 };
 
 const getItemUnitPrice = (item) => {
@@ -145,6 +157,30 @@ const getOrderPlatformFee = (record) => {
       record?.orderPlatformFeeSnapshot?.effectiveAmount ??
       0
   );
+};
+
+const getChargeBreakdown = (record) => {
+  const settlement = record?.restaurantSettlement || {};
+  return {
+    packagingCharge: toNumber(
+      settlement.packagingChargeTotal ??
+        settlement.packagingCharge ??
+        record?.packagingChargeTotal ??
+        record?.packagingCharge ??
+        record?.pricingSnapshot?.packagingChargeTotal ??
+        record?.pricingSnapshot?.packagingCharge
+    ),
+    vatAmount: toNumber(settlement.vatAmount ?? record?.vatAmount ?? record?.pricingSnapshot?.vatAmount),
+    vatRecipient: String(
+      settlement.vatRecipient ?? record?.vatRecipient ?? record?.pricingSnapshot?.vatRecipient ?? "FOODVERSE"
+    ).toUpperCase(),
+    commissionAmount: toNumber(settlement.commissionAmount ?? record?.commissionAmount),
+    restaurantPayout: toNumber(
+      settlement.riderCashPayable ??
+        settlement.restaurantCredit ??
+        settlement.grossRestaurantPayable
+    ),
+  };
 };
 
 const getVoucherAmount = (record) => {
@@ -254,14 +290,26 @@ function Order() {
   const [phoneInput, setPhoneInput] = useState("");
   const [riderInput, setRiderInput] = useState("");
   const [userInput, setUserInput] = useState(searchParams.get("userId") || "");
+  const [paymentFilter, setPaymentFilter] = useState(searchParams.get("paymentMethod") || "");
+  const [expandedAmounts, setExpandedAmounts] = useState(() => new Set());
+
+  const toggleAmountDetails = (orderId) => {
+    setExpandedAmounts((current) => {
+      const next = new Set(current);
+      const key = String(orderId || "");
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const currentPage = parseInt(searchParams.get("page") || "1", 10);
   const limit = parseInt(searchParams.get("limit") || "20", 10);
   const userIdSearch = searchParams.get("userId");
 
   const queryKey = useMemo(
-    () => ["orders", currentPage, limit, user?.zoneId, userIdSearch || ""],
-    [currentPage, limit, user?.zoneId, userIdSearch]
+    () => ["orders", currentPage, limit, user?.zoneId, userIdSearch || "", paymentFilter],
+    [currentPage, limit, user?.zoneId, userIdSearch, paymentFilter]
   );
 
   const { data, isLoading, isPlaceholderData, refetch } = useQuery({
@@ -283,7 +331,7 @@ function Order() {
         );
       }
 
-      return await OrderService.getOrderList(currentPage, limit, user.zoneId);
+      return await OrderService.getOrderList(currentPage, limit, user.zoneId, paymentFilter);
     },
     placeholderData: keepPreviousData,
     enabled: !!user?.zoneId,
@@ -294,11 +342,13 @@ function Order() {
     newParams.delete("userId");
     newParams.set("page", "1");
     newParams.set("limit", String(limit));
+    newParams.delete("paymentMethod");
     setSearchParams(newParams);
     setErrors(null);
     setPhoneInput("");
     setRiderInput("");
     setUserInput("");
+    setPaymentFilter("");
     await refetch();
   };
 
@@ -438,6 +488,16 @@ function Order() {
       render: (status) => <StatusBadge status={status} />,
     },
     {
+      title: "PAYMENT",
+      key: "paymentMethod",
+      width: 120,
+      render: (_, record) => {
+        const label = paymentMethodLabel(record);
+        const color = label === "bKash" ? "magenta" : label === "Cash on Delivery" ? "green" : label === "Unknown" ? "default" : "blue";
+        return <Tag color={color}>{label}</Tag>;
+      },
+    },
+    {
       title: "ITEMS",
       dataIndex: "items",
       key: "items",
@@ -512,25 +572,69 @@ function Order() {
       key: "price",
       width: 135,
       render: (_, record) => {
+        const orderKey = String(record?._id || record?.id || "");
+        const showDetails = expandedAmounts.has(orderKey);
         const deliveryCharge = getUserDeliveryCharge(record);
         const riderTip = getRiderTip(record);
         const orderPlatformFee = getOrderPlatformFee(record);
+        const { packagingCharge, vatAmount, vatRecipient, commissionAmount, restaurantPayout } = getChargeBreakdown(record);
         const voucherAmount = getVoucherAmount(record);
         const flashDealAmount = getFlashDealAmount(record);
         const grossItemsTotal = getGrossItemsTotal(record);
         const finalTotal = getDisplayOrderTotal(record);
 
         return (
-          <div className="rounded-xl bg-slate-50 px-2 py-2 border border-slate-100 leading-tight">
-            <div className="text-[9px] uppercase text-slate-400">Total</div>
-
-            <div className="text-[14px] font-bold text-emerald-600">
-              {formatMoney(finalTotal)}
+          <div className="rounded-xl bg-slate-50 px-2 py-1.5 border border-slate-100 leading-tight">
+            <div className="flex items-start justify-between gap-1">
+              <div>
+                <div className="text-[9px] uppercase text-slate-400">Total</div>
+                <div className="text-[14px] font-bold text-emerald-600">
+                  {formatMoney(finalTotal)}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] text-slate-600 hover:border-blue-300 hover:text-blue-600"
+                onClick={() => toggleAmountDetails(orderKey)}
+                aria-label={showDetails ? "Hide amount details" : "Show amount details"}
+                title={showDetails ? "Hide details" : "More details"}
+              >
+                {showDetails ? <UpOutlined /> : <DownOutlined />}
+              </button>
             </div>
 
-            <div className="text-[10px] font-semibold text-slate-600">
-              Items {grossItemsTotal.toFixed(0)}
+            <div className="text-[10px] font-semibold text-blue-600">
+              Delivery {deliveryCharge.toFixed(0)}
             </div>
+
+            {showDetails ? <div className="mt-1 border-t border-slate-200 pt-1">
+              <div className="text-[10px] font-semibold text-slate-600">
+                Items {grossItemsTotal.toFixed(0)}
+              </div>
+
+            {packagingCharge > 0 ? (
+              <div className="text-[10px] font-semibold text-emerald-600">
+                Packaging {packagingCharge.toFixed(0)}
+              </div>
+            ) : null}
+
+            {vatAmount > 0 ? (
+              <div className="text-[10px] font-semibold text-amber-600">
+                VAT {vatAmount.toFixed(0)} {vatRecipient === "RESTAURANT" ? "(Restaurant)" : "(Food Verse)"}
+              </div>
+            ) : null}
+
+            {restaurantPayout > 0 ? (
+              <div className="text-[10px] font-black text-violet-700">
+                Restaurant receives {restaurantPayout.toFixed(0)}
+              </div>
+            ) : null}
+
+            {commissionAmount > 0 ? (
+              <div className="text-[10px] font-semibold text-rose-600">
+                Commission -{commissionAmount.toFixed(0)}
+              </div>
+            ) : null}
 
             {flashDealAmount > 0 ? (
               <div className="text-[10px] font-bold text-red-500">
@@ -538,13 +642,11 @@ function Order() {
               </div>
             ) : null}
 
-            <div className="text-[10px] text-blue-500">
-              Delivery {deliveryCharge.toFixed(0)}
-            </div>
-
-            <div className="text-[10px] font-semibold text-violet-600">
-              Platform Fee {orderPlatformFee.toFixed(0)}
-            </div>
+            {orderPlatformFee > 0 ? (
+              <div className="text-[10px] font-semibold text-violet-600">
+                Platform Fee {orderPlatformFee.toFixed(0)}
+              </div>
+            ) : null}
 
             {riderTip > 0 ? (
               <div className="text-[10px] text-slate-500">
@@ -552,11 +654,12 @@ function Order() {
               </div>
             ) : null}
 
-            {voucherAmount > 0 ? (
+              {voucherAmount > 0 ? (
               <div className="text-[10px] font-bold text-red-500">
                 Voucher -{voucherAmount.toFixed(0)}
               </div>
-            ) : null}
+              ) : null}
+            </div> : null}
           </div>
         );
       },
@@ -595,7 +698,8 @@ function Order() {
       width: 170,
       render: (_, record) => (
         <div className="flex items-center gap-1.5">
-          <AssignRider orderId={record._id} />
+          <AssignRider orderId={record._id} currentStatus={record.status} />
+          <EditOrderItems order={record} onUpdated={() => { queryClient.invalidateQueries({ queryKey: ["orders"] }); }} />
           <DeleteOrder orderId={record._id} />
           <UpdateOrderStatus
             orderId={record._id}
@@ -643,6 +747,9 @@ function Order() {
                 allowClear
                 className="rounded-xl h-9"
               />
+            </Col>
+            <Col xs={24} sm={8}>
+              <Select value={paymentFilter || undefined} allowClear placeholder="Payment method" className="w-full" onChange={(value) => { setPaymentFilter(value || ""); const next = new URLSearchParams(searchParams); next.set("page", "1"); if (value) next.set("paymentMethod", value); else next.delete("paymentMethod"); setSearchParams(next); }} options={[{ value: "BKASH", label: "bKash" }, { value: "COD", label: "Cash on Delivery" }, { value: "WALLET", label: "Wallet / Online" }, { value: "UNKNOWN", label: "Unknown" }]} />
             </Col>
 
             <Col xs={24} sm={8}>

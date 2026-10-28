@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Button, InputNumber, message } from "antd";
+import { Button, Input, InputNumber, Select, message } from "antd";
 import { ArrowLeft, ShieldCheck, Wallet } from "lucide-react";
 import Layout from "../components/layout/Layout";
 import api from "../api/config";
@@ -11,6 +11,17 @@ export default function RiderPayment() {
   const [amount, setAmount] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [rider, setRider] = useState(null);
+  const [settlementAmount, setSettlementAmount] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState("BKASH");
+  const [reference, setReference] = useState("");
+  const [note, setNote] = useState("");
+  const [settling, setSettling] = useState(false);
+  const [settlementKey, setSettlementKey] = useState("");
+
+  useEffect(() => {
+    api.get(`/zone/rider/${riderId}`).then(({ data }) => setRider(data?.result || null)).catch(() => {});
+  }, [riderId]);
 
   const submitPayment = async () => {
     if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
@@ -37,6 +48,23 @@ export default function RiderPayment() {
     }
   };
 
+  const settleCash = async () => {
+    const value = Number(settlementAmount);
+    if (!Number.isFinite(value) || value <= 0 || value > Math.abs(Number(rider?.cashCollection || 0))) return message.error("Enter an amount within the rider receivable balance.");
+    if (["BKASH", "BANK"].includes(paymentMethod) && !reference.trim()) return message.error("Reference is required.");
+    if (["CASH", "OTHER"].includes(paymentMethod) && !note.trim()) return message.error("Note is required.");
+    try {
+      setSettling(true);
+      const key = settlementKey || `agent-${riderId}-${Date.now()}`;
+      if (!settlementKey) setSettlementKey(key);
+      const { data } = await api.put("/zone/rider-cash-settlement", { riderId, amount: value, paymentMethod, reference, note, idempotencyKey: key });
+      if (!data?.success) throw new Error(data?.message || "Settlement failed.");
+      setRider((prev) => ({ ...prev, cashCollection: data.cashBalanceAfter })); setSettlementAmount(null); setReference(""); setNote(""); setSettlementKey("");
+      message.success(data.duplicate ? "Settlement already recorded." : "Rider receivable settled.");
+    } catch (error) { message.error(error?.response?.data?.message || error?.message || "Settlement failed."); }
+    finally { setSettling(false); }
+  };
+
   return (
     <Layout>
       <div className="mx-auto max-w-3xl space-y-5 p-4 md:p-8">
@@ -52,7 +80,7 @@ export default function RiderPayment() {
             <Wallet /> Rider Payment
           </h1>
           <p className="mt-3 break-all text-sm text-slate-300">
-            Rider ID: {riderId}
+            Rider ID: {riderId} {rider ? `• Cash balance: BDT ${Number(rider.cashCollection || 0).toLocaleString()}` : ""}
           </p>
         </section>
 
@@ -98,6 +126,17 @@ export default function RiderPayment() {
               </div>
             </div>
           ) : null}
+        </section>
+
+        <section className="rounded-[28px] border border-rose-200 bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-black text-slate-950">Settle Rider Receivable</h2>
+          <p className="mt-2 text-sm text-slate-500">Use this only when the rider’s signed cash balance is negative. It does not change earning.</p>
+          <div className="mt-4 rounded-2xl bg-rose-50 p-4 text-rose-800">Current cash balance: <b>BDT {Number(rider?.cashCollection || 0).toLocaleString()}</b></div>
+          <InputNumber min={0.01} precision={2} value={settlementAmount} onChange={setSettlementAmount} placeholder="Amount paid to rider" className="mt-4 !w-full" size="large" />
+          <Select value={paymentMethod} onChange={setPaymentMethod} className="mt-3 !w-full" size="large" options={["BKASH", "BANK", "CASH", "OTHER"].map((value) => ({ value, label: value }))} />
+          <Input value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Reference (required for bKash/Bank)" className="mt-3" size="large" />
+          <Input.TextArea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Note (required for Cash/Other)" className="mt-3" rows={3} />
+          <Button danger block size="large" className="mt-4" loading={settling} disabled={Number(rider?.cashCollection || 0) >= 0} onClick={settleCash}>Confirm Receivable Payment</Button>
         </section>
       </div>
     </Layout>
